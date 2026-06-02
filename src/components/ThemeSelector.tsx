@@ -1,14 +1,13 @@
 import { motion } from 'motion/react';
 import { TEMAS, TemaConfig } from '../types';
-import { ArrowRight, Music, Search, CreditCard } from 'lucide-react';
+import { ArrowRight, Music, Search } from 'lucide-react';
 
 interface ThemeSelectorProps {
   onSelectTheme: (theme: TemaConfig) => void;
   onGoToSearch: () => void;
-  onGoToPaymentTest?: () => void;
 }
 
-export default function ThemeSelector({ onSelectTheme, onGoToSearch, onGoToPaymentTest }: ThemeSelectorProps) {
+export default function ThemeSelector({ onSelectTheme, onGoToSearch }: ThemeSelectorProps) {
   return (
     <div id="theme-selector-root" className="max-w-4xl mx-auto px-4 py-8">
       <div className="text-center mb-12">
@@ -42,22 +41,13 @@ export default function ThemeSelector({ onSelectTheme, onGoToSearch, onGoToPayme
 
       <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-12">
         <button
+          type="button"
           onClick={onGoToSearch}
           className="flex items-center gap-2 px-6 py-3 bg-white hover:bg-natural-sage-light text-natural-dark font-medium rounded-xl border border-natural-border shadow-xs transition-all text-sm w-full sm:w-auto justify-center cursor-pointer"
         >
           <Search className="w-4 h-4 text-natural-sage" />
           Minhas Musicas Anteriores
         </button>
-
-        {onGoToPaymentTest && (
-          <button
-            onClick={onGoToPaymentTest}
-            className="flex items-center gap-2 px-6 py-3 bg-natural-sage hover:bg-natural-sage/90 text-white font-medium rounded-xl border border-natural-sage shadow-xs transition-all text-sm w-full sm:w-auto justify-center cursor-pointer"
-          >
-            <CreditCard className="w-4 h-4" />
-            Testar Tela de Pagamento
-          </button>
-        )}
       </div>
 
       <h2 className="text-sm font-semibold tracking-wider text-natural-subtext text-center uppercase mb-6 font-sans">

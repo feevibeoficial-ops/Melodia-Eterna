@@ -25,7 +25,12 @@ export function getPedido(id: string): PedidoMusica | null {
   }
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(raw) as PedidoMusica;
+    const parsed = JSON.parse(raw) as Partial<PedidoMusica>;
+    return {
+      ...parsed,
+      comprovante_url_local: parsed.comprovante_url_local ?? null,
+      comprovante_nome_arquivo: parsed.comprovante_nome_arquivo ?? null,
+    } as PedidoMusica;
   } catch (err) {
     console.error(`Erro ao ler pedido ${id}:`, err);
     return null;

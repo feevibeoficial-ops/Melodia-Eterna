@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+data/uploads/
+data/telegram-state.json
+data/comprovantes/

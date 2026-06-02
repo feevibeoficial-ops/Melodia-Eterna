@@ -261,27 +261,27 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             </div>
 
             {/* Backups trigger */}
-            {pedido.url_original_suno && (
+            {pedido.url_referencia_externa_1 && (
               <div className="pt-3">
                 <span className="text-[10px] text-natural-subtext block text-center">
-                  Faixas originais do estúdio (backup permanente na nuvem):
+                  Referencias salvas para consulta futura:
                 </span>
                 <div className="flex gap-4 mt-2 justify-center font-mono">
                   <a
-                    href={pedido.url_original_suno}
+                    href={pedido.url_referencia_externa_1}
                     target="_blank"
                     rel="noreferrer"
                     className="text-[10px] font-semibold text-natural-sage hover:underline flex items-center gap-1"
                   >
-                    Nuvem V1 <ExternalLink className="w-3 h-3" />
+                    Referencia V1 <ExternalLink className="w-3 h-3" />
                   </a>
                   <a
-                    href={pedido.url_original_suno_2 || undefined}
+                    href={pedido.url_referencia_externa_2 || undefined}
                     target="_blank"
                     rel="noreferrer"
                     className="text-[10px] font-semibold text-natural-sage hover:underline flex items-center gap-1"
                   >
-                    Nuvem V2 <ExternalLink className="w-3 h-3" />
+                    Referencia V2 <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               </div>

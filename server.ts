@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 
@@ -9,17 +10,533 @@ dotenv.config();
 import { RespostasFormulario, PedidoMusica } from './src/types';
 import { savePedido, getPedido, listPedidosByContact, listAllPedidos } from './server/db';
 import { composeLyrics, refineLyrics } from './server/gemini';
-import { processAudioForPedido, getAudioFilePath } from './server/audio';
+import { attachAudioSlotToPedido, attachManualAudioToPedido, clearPedidoAudio, getAudioFilePath, saveUploadedTempFile } from './server/audio';
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+const TELEGRAM_STATE_PATH = path.join(DATA_DIR, 'telegram-state.json');
+const COMPROVANTES_DIR = path.join(DATA_DIR, 'comprovantes');
+
+if (!fs.existsSync(COMPROVANTES_DIR)) {
+  fs.mkdirSync(COMPROVANTES_DIR, { recursive: true });
+}
 
 function getAudioContentType(filePath: string) {
-  return filePath.toLowerCase().endsWith('.wav') ? 'audio/wav' : 'audio/mpeg';
+  if (filePath.toLowerCase().endsWith('.wav')) return 'audio/wav';
+  return 'audio/mpeg';
+}
+
+function makePixCode(id: string) {
+  return `00020101021226850014br.gov.bcb.pix2563pix.melodiaeterna.com.br/qr/v2/${id}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+}
+
+function getWhatsAppNumber() {
+  return (process.env.APP_WHATSAPP_NUMBER || '').replace(/\D/g, '');
+}
+
+function getTelegramBotToken() {
+  return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+}
+
+function getTelegramChatId() {
+  return (process.env.TELEGRAM_CHAT_ID || '').trim();
+}
+
+function buildApprovalWhatsAppLink(pedido: PedidoMusica) {
+  const number = getWhatsAppNumber();
+  if (!number) return null;
+
+  const letra = pedido.letra_aprovada || pedido.letra_gerada;
+  const message = [
+    `Novo pedido aprovado: ${pedido.id}`,
+    `Cliente: ${pedido.cliente_email} | ${pedido.cliente_whatsapp}`,
+    `Tema: ${pedido.respostas.temaId}`,
+    `Estilo: ${pedido.respostas.estiloMusical}`,
+    `Voz: ${pedido.respostas.provVoice}`,
+    '',
+    'Letra aprovada:',
+    letra,
+  ].join('\n');
+
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+
+function buildClientSupportWhatsAppLink(pedido: PedidoMusica) {
+  const number = getWhatsAppNumber();
+  if (!number) return null;
+
+  const message = [
+    `Olá, quero dar seguimento ao pedido ${pedido.id}.`,
+    `Cliente: ${pedido.cliente_email} | ${pedido.cliente_whatsapp}`,
+    pedido.status_pagamento === 'PAGO'
+      ? 'O pagamento ja foi realizado. Pode confirmar a liberacao das faixas completas?'
+      : 'Estou enviando o comprovante de pagamento para liberar as faixas completas.',
+  ].join('\n');
+
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+
+function buildTelegramApprovalMessage(pedido: PedidoMusica) {
+  const letra = pedido.letra_aprovada || pedido.letra_gerada;
+  return [
+    `Novo pedido aprovado: ${pedido.id}`,
+    `Cliente: ${pedido.cliente_email}`,
+    `WhatsApp: ${pedido.cliente_whatsapp}`,
+    `Tema: ${pedido.respostas.temaId}`,
+    `Estilo: ${pedido.respostas.estiloMusical}`,
+    `Voz: ${pedido.respostas.provVoice}`,
+    '',
+    'Letra aprovada:',
+    letra,
+  ].join('\n');
+}
+
+function buildTelegramProofMessage(pedido: PedidoMusica) {
+  return [
+    `Comprovante recebido: ${pedido.id}`,
+    `Cliente: ${pedido.cliente_email}`,
+    `WhatsApp: ${pedido.cliente_whatsapp}`,
+    `Tema: ${pedido.respostas.temaId}`,
+    `Estilo: ${pedido.respostas.estiloMusical}`,
+  ].join('\n');
+}
+
+async function sendTelegramMessage(text: string) {
+  const botToken = getTelegramBotToken();
+  const chatId = getTelegramChatId();
+  if (!botToken || !chatId) {
+    return { sent: false, reason: 'Telegram nao configurado.' };
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+    }),
+  });
+
+  const data = await response.json() as { ok?: boolean; description?: string };
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description || 'Falha ao enviar notificacao para o Telegram.');
+  }
+
+  return { sent: true };
+}
+
+async function sendTelegramDocument(filePath: string, caption: string) {
+  const botToken = getTelegramBotToken();
+  const chatId = getTelegramChatId();
+  if (!botToken || !chatId) {
+    return { sent: false, reason: 'Telegram nao configurado.' };
+  }
+
+  const formData = new FormData();
+  formData.append('chat_id', chatId);
+  formData.append('caption', caption);
+  formData.append('document', new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await response.json() as { ok?: boolean; description?: string };
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description || 'Falha ao enviar documento para o Telegram.');
+  }
+
+  return { sent: true };
+}
+
+async function sendTelegramApprovalNotification(pedido: PedidoMusica) {
+  return sendTelegramMessage(buildTelegramApprovalMessage(pedido));
+}
+
+async function notifyTelegramError(title: string, details: string) {
+  try {
+    await sendTelegramMessage([`[ERRO] ${title}`, details].join('\n'));
+  } catch (error) {
+    console.error('Falha secundaria ao notificar erro no Telegram:', error);
+  }
+}
+
+type TelegramUpdate = {
+  update_id: number;
+  message?: {
+    message_id: number;
+    text?: string;
+    caption?: string;
+    chat?: { id: number | string };
+    document?: { file_id: string; file_name?: string };
+    audio?: { file_id: string; file_name?: string };
+  };
+};
+
+function loadTelegramOffset() {
+  if (!fs.existsSync(TELEGRAM_STATE_PATH)) {
+    return 0;
+  }
+
+  try {
+    const raw = fs.readFileSync(TELEGRAM_STATE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw) as { lastUpdateId?: number };
+    return parsed.lastUpdateId || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveTelegramOffset(lastUpdateId: number) {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  fs.writeFileSync(TELEGRAM_STATE_PATH, JSON.stringify({ lastUpdateId }, null, 2), 'utf-8');
+}
+
+function parseTelegramAudioCommand(text: string | undefined) {
+  if (!text) return null;
+  const match = /(MEL-[A-Z0-9]+)\s+(v[12])/i.exec(text);
+  if (!match) return null;
+  return {
+    pedidoId: match[1].toUpperCase(),
+    version: match[2].toLowerCase() as 'v1' | 'v2',
+  };
+}
+
+function isTelegramStatsCommand(text: string | undefined) {
+  if (!text) return false;
+  const normalized = text.trim().toLowerCase();
+  return normalized === '/stats' || normalized === '/resumo';
+}
+
+function isTelegramHelpCommand(text: string | undefined) {
+  if (!text) return false;
+  const normalized = text.trim().toLowerCase();
+  return normalized === '/start' || normalized === '/help' || normalized === '/ajuda';
+}
+
+function parseTelegramMarkPaidCommand(text: string | undefined) {
+  if (!text) return null;
+  const match = /^\/(pago|aprovar_pagamento)\s+(MEL-[A-Z0-9]+)$/i.exec(text.trim());
+  if (!match) return null;
+  return {
+    pedidoId: match[2].toUpperCase(),
+  };
+}
+
+function formatRanking(items: Record<string, number>, emptyLabel: string) {
+  const entries = Object.entries(items)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 10);
+
+  if (!entries.length) {
+    return emptyLabel;
+  }
+
+  return entries.map(([label, count]) => `- ${label}: ${count}`).join('\n');
+}
+
+function buildTelegramStatsMessage() {
+  const pedidos = listAllPedidos();
+  const total = pedidos.length;
+  const pagos = pedidos.filter((pedido) => pedido.status_pagamento === 'PAGO').length;
+  const pendentes = total - pagos;
+  const aprovados = pedidos.filter((pedido) => Boolean(pedido.letra_aprovada)).length;
+  const comPrevias = pedidos.filter((pedido) => Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2)).length;
+
+  const porTema: Record<string, number> = {};
+  const porEstilo: Record<string, number> = {};
+  const porStatus: Record<string, number> = {};
+
+  for (const pedido of pedidos) {
+    porTema[pedido.respostas.temaId] = (porTema[pedido.respostas.temaId] || 0) + 1;
+    porEstilo[pedido.respostas.estiloMusical] = (porEstilo[pedido.respostas.estiloMusical] || 0) + 1;
+    porStatus[pedido.status_producao] = (porStatus[pedido.status_producao] || 0) + 1;
+  }
+
+  return [
+    'Resumo do sistema Melodia Eterna',
+    '',
+    `Total de pedidos: ${total}`,
+    `Pagos: ${pagos}`,
+    `Pendentes: ${pendentes}`,
+    `Letras aprovadas: ${aprovados}`,
+    `Pedidos com previas prontas: ${comPrevias}`,
+    '',
+    'Por status de producao:',
+    formatRanking(porStatus, '- Nenhum pedido'),
+    '',
+    'Por tema:',
+    formatRanking(porTema, '- Nenhum tema registrado'),
+    '',
+    'Por estilo musical:',
+    formatRanking(porEstilo, '- Nenhum estilo registrado'),
+  ].join('\n');
+}
+
+function buildTelegramHelpMessage() {
+  return [
+    'Comandos do bot Melodia Eterna',
+    '',
+    '/stats - resumo do sistema',
+    '/resumo - mesmo resumo do sistema',
+    '/help - mostra esta ajuda',
+    '/pago MEL-XXXX - aprova o pagamento do pedido',
+    '',
+    'Para anexar musicas em pedidos:',
+    '- envie a faixa com legenda: MEL-XXXXXXX v1',
+    '- envie a outra faixa com legenda: MEL-XXXXXXX v2',
+    '',
+    'Exemplo:',
+    'MEL-LJSGQ0DTN v1',
+  ].join('\n');
+}
+
+async function telegramApiRequest<T>(method: string, body?: Record<string, unknown>) {
+  const botToken = getTelegramBotToken();
+  if (!botToken) {
+    throw new Error('Telegram nao configurado.');
+  }
+
+  const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+    method: body ? 'POST' : 'GET',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const data = await response.json() as { ok?: boolean; result?: T; description?: string };
+  if (!response.ok || !data.ok) {
+    throw new Error(data.description || `Falha na chamada ${method} do Telegram.`);
+  }
+
+  return data.result as T;
+}
+
+async function downloadTelegramFile(fileId: string, fileName?: string) {
+  const botToken = getTelegramBotToken();
+  if (!botToken) {
+    throw new Error('Telegram nao configurado.');
+  }
+
+  const fileInfo = await telegramApiRequest<{ file_path: string }>('getFile', { file_id: fileId });
+  if (!fileInfo.file_path) {
+    throw new Error('Arquivo do Telegram sem file_path.');
+  }
+
+  const extension = path.extname(fileInfo.file_path) || path.extname(fileName || '') || '.mp3';
+  const safeName = `${Date.now()}_${fileId}${extension}`;
+  const tempPath = path.join(process.cwd(), 'data', 'uploads', safeName);
+
+  const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${fileInfo.file_path}`);
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar arquivo do Telegram. Status ${response.status}.`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(tempPath, buffer);
+  return tempPath;
+}
+
+async function sendTelegramReply(chatId: number | string, text: string) {
+  try {
+    await telegramApiRequest('sendMessage', {
+      chat_id: chatId,
+      text,
+    });
+  } catch (error) {
+    console.error('Falha ao responder no Telegram:', error);
+  }
+}
+
+async function processTelegramMusicUpdate(update: TelegramUpdate) {
+  const message = update.message;
+  if (!message?.chat) {
+    return;
+  }
+
+  if (isTelegramHelpCommand(message.text)) {
+    await sendTelegramReply(message.chat.id, buildTelegramHelpMessage());
+    return;
+  }
+
+  if (isTelegramStatsCommand(message.text)) {
+    await sendTelegramReply(message.chat.id, buildTelegramStatsMessage());
+    return;
+  }
+
+  const markPaidCommand = parseTelegramMarkPaidCommand(message.text);
+  if (markPaidCommand) {
+    const pedido = getPedido(markPaidCommand.pedidoId);
+    if (!pedido) {
+      await sendTelegramReply(message.chat.id, `Pedido ${markPaidCommand.pedidoId} nao encontrado.`);
+      return;
+    }
+
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + 10);
+    pedido.status_pagamento = 'PAGO';
+    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
+    pedido.data_expiracao_local = expDate.toISOString();
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+
+    await sendTelegramReply(
+      message.chat.id,
+      `Pagamento aprovado no pedido ${pedido.id}. O cliente ja pode acessar a liberacao conforme o status do pedido.`,
+    );
+    return;
+  }
+
+  const command = parseTelegramAudioCommand(message.caption || message.text);
+  if (!command) {
+    return;
+  }
+
+  const media = message.document || message.audio;
+  if (!media?.file_id) {
+    await sendTelegramReply(
+      message.chat.id,
+      `Envie o arquivo com a legenda no formato "${command.pedidoId} ${command.version}".`,
+    );
+    return;
+  }
+
+  const pedido = getPedido(command.pedidoId);
+  if (!pedido) {
+    await sendTelegramReply(message.chat.id, `Pedido ${command.pedidoId} nao encontrado.`);
+    return;
+  }
+
+  let tempPath: string | null = null;
+  try {
+    tempPath = await downloadTelegramFile(media.file_id, media.file_name);
+    const attached = await attachAudioSlotToPedido(
+      pedido.id,
+      command.version,
+      tempPath,
+      `telegram:${media.file_id}`,
+    );
+
+    if (command.version === 'v1') {
+      pedido.url_local_servidor = attached.previewUrl;
+      pedido.url_referencia_externa_1 = attached.referenceUrl;
+    } else {
+      pedido.url_local_servidor_2 = attached.previewUrl;
+      pedido.url_referencia_externa_2 = attached.referenceUrl;
+    }
+
+    const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
+    pedido.status_producao = hasBothPreviews
+      ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
+      : 'AGUARDANDO_FAIXAS';
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+
+    await sendTelegramReply(
+      message.chat.id,
+      hasBothPreviews
+        ? `Faixa ${command.version.toUpperCase()} anexada ao pedido ${pedido.id}. As duas previas ja estao prontas.`
+        : `Faixa ${command.version.toUpperCase()} anexada ao pedido ${pedido.id}. Agora envie a outra faixa.`,
+    );
+  } catch (error: any) {
+    console.error('Erro ao anexar faixa recebida no Telegram:', error);
+    await notifyTelegramError(
+      'Falha ao anexar faixa do Telegram',
+      `Pedido: ${command.pedidoId}\nSlot: ${command.version}\n${error?.message || 'Erro desconhecido.'}`,
+    );
+    await sendTelegramReply(
+      message.chat.id,
+      `Nao foi possivel anexar a faixa ${command.version.toUpperCase()} no pedido ${command.pedidoId}.`,
+    );
+  } finally {
+    if (tempPath) {
+      fs.rmSync(tempPath, { force: true });
+    }
+  }
+}
+
+async function ensureTelegramCommands() {
+  if (!getTelegramBotToken()) {
+    return;
+  }
+
+  try {
+    await telegramApiRequest('setMyCommands', {
+      commands: [
+        { command: 'stats', description: 'Resumo do sistema' },
+        { command: 'resumo', description: 'Resumo do sistema' },
+        { command: 'help', description: 'Ajuda e formatos do bot' },
+        { command: 'pago', description: 'Aprova pagamento de um pedido' },
+      ],
+    });
+  } catch (error) {
+    console.error('Falha ao registrar comandos do Telegram:', error);
+  }
+}
+
+function startTelegramPolling() {
+  if (!getTelegramBotToken() || !getTelegramChatId()) {
+    return;
+  }
+
+  let offset = loadTelegramOffset();
+  let running = false;
+
+  const poll = async () => {
+    if (running) return;
+    running = true;
+
+    try {
+      const updates = await telegramApiRequest<TelegramUpdate[]>('getUpdates', {
+        offset: offset + 1,
+        timeout: 10,
+      });
+
+      for (const update of updates) {
+        await processTelegramMusicUpdate(update);
+        offset = update.update_id;
+        saveTelegramOffset(offset);
+      }
+    } catch (error) {
+      console.error('Falha no polling do Telegram:', error);
+    } finally {
+      running = false;
+    }
+  };
+
+  ensureTelegramCommands().catch(() => undefined);
+  poll().catch(() => undefined);
+  setInterval(() => {
+    poll().catch(() => undefined);
+  }, 5000);
+}
+
+function getAdminPassword(req: express.Request) {
+  return req.header('x-admin-password') || '';
+}
+
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const configuredPassword = process.env.ADMIN_PASSWORD || '';
+  if (!configuredPassword) {
+    res.status(500).json({ error: 'ADMIN_PASSWORD nao configurada no servidor.' });
+    return;
+  }
+
+  if (getAdminPassword(req) !== configuredPassword) {
+    res.status(401).json({ error: 'Senha da gestao invalida.' });
+    return;
+  }
+
+  next();
 }
 
 async function startServer() {
   const app = express();
   const port = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '2mb' }));
+  startTelegramPolling();
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
@@ -52,12 +569,17 @@ async function startServer() {
         termo_aceite_assinado: false,
         termo_aceite_timestamp: null,
         status_pagamento: 'PENDENTE',
+        status_producao: 'AGUARDANDO_APROVACAO',
         pix_copia_e_cola: null,
         pix_qr_code_url: null,
         url_original_suno: null,
         url_original_suno_2: null,
+        url_referencia_externa_1: null,
+        url_referencia_externa_2: null,
         url_local_servidor: null,
         url_local_servidor_2: null,
+        comprovante_url_local: null,
+        comprovante_nome_arquivo: null,
         data_expiracao_local: null,
       };
 
@@ -65,9 +587,11 @@ async function startServer() {
       res.json(novoPedido);
     } catch (error: any) {
       console.error('Erro ao compor letra:', error);
-      res.status(error?.statusCode || 500).json({
-        error: error?.message || 'Erro interno do servidor ao gerar composicao.',
-      });
+      await notifyTelegramError(
+        'Falha ao gerar letra',
+        error?.message || 'Erro desconhecido ao gerar composicao.',
+      );
+      res.status(error?.statusCode || 500).json({ error: error?.message || 'Erro ao gerar composicao.' });
     }
   });
 
@@ -95,23 +619,20 @@ async function startServer() {
       pedido.letra_gerada = letraRefinada;
       pedido.updatedAt = new Date().toISOString();
       savePedido(pedido);
-
       res.json(pedido);
     } catch (error: any) {
       console.error('Erro ao refinar composicao:', error);
-      res.status(error?.statusCode || 500).json({
-        error: error?.message || 'Erro interno ao refinar composicao.',
-      });
+      await notifyTelegramError(
+        'Falha ao refinar letra',
+        error?.message || 'Erro desconhecido ao refinar composicao.',
+      );
+      res.status(error?.statusCode || 500).json({ error: error?.message || 'Erro ao refinar composicao.' });
     }
   });
 
   app.post('/api/lyrics/approve', async (req, res) => {
     try {
-      const { id, termo_aceite_assinado } = req.body as {
-        id: string;
-        termo_aceite_assinado: boolean;
-      };
-
+      const { id, termo_aceite_assinado } = req.body as { id: string; termo_aceite_assinado: boolean };
       if (!termo_aceite_assinado) {
         res.status(400).json({ error: 'E necessario aceitar os termos de responsabilidade tecnica.' });
         return;
@@ -123,110 +644,62 @@ async function startServer() {
         return;
       }
 
-      const randomPixKey =
-        `00020101021226850014br.gov.bcb.pix2563pix.melodiaeterna.com.br/qr/v2/${id}` +
-        Math.random().toString(36).substring(2, 10).toUpperCase();
-
       pedido.letra_aprovada = pedido.letra_gerada;
       pedido.termo_aceite_assinado = true;
       pedido.termo_aceite_timestamp = new Date().toISOString();
-      pedido.pix_copia_e_cola = randomPixKey;
-      pedido.pix_qr_code_url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(randomPixKey)}`;
-      pedido.updatedAt = new Date().toISOString();
-
-      const audioResults = await processAudioForPedido(
-        pedido.id,
-        pedido.respostas.estiloMusical,
-        pedido.letra_aprovada || pedido.letra_gerada,
-      );
-
-      pedido.url_original_suno = audioResults.url_original_suno;
-      pedido.url_original_suno_2 = audioResults.url_original_suno_2;
-      pedido.url_local_servidor = audioResults.url_local_servidor;
-      pedido.url_local_servidor_2 = audioResults.url_local_servidor_2;
+      pedido.status_producao = 'AGUARDANDO_FAIXAS';
+      pedido.pix_copia_e_cola = pedido.pix_copia_e_cola || makePixCode(id);
+      pedido.pix_qr_code_url = pedido.pix_qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pedido.pix_copia_e_cola)}`;
       pedido.updatedAt = new Date().toISOString();
 
       savePedido(pedido);
-      res.json(pedido);
+      let telegramSent = false;
+      let telegramError: string | null = null;
+
+      try {
+        const telegramResult = await sendTelegramApprovalNotification(pedido);
+        telegramSent = telegramResult.sent;
+      } catch (telegramErr: any) {
+        telegramError = telegramErr.message || 'Falha ao enviar para o Telegram.';
+        console.error('Erro ao enviar notificacao para o Telegram:', telegramErr);
+        await notifyTelegramError(
+          'Falha ao enviar letra aprovada',
+          `Pedido: ${pedido.id}\n${telegramError}`,
+        );
+      }
+
+      res.json({
+        pedido,
+        whatsappLink: buildApprovalWhatsAppLink(pedido),
+        telegramSent,
+        telegramError,
+      });
     } catch (error: any) {
       console.error('Erro ao aprovar letra:', error);
-      res.status(500).json({ error: 'Erro ao aprovar letra anterior.' });
+      await notifyTelegramError(
+        'Falha ao aprovar letra',
+        error?.message || 'Erro desconhecido ao aprovar letra.',
+      );
+      res.status(500).json({ error: error?.message || 'Erro ao aprovar letra.' });
     }
   });
 
-  app.post('/api/dev/payment-test', async (_req, res) => {
-    try {
-      const pedido = listAllPedidos()[0];
-      if (!pedido) {
-        res.status(404).json({ error: 'Nenhum pedido encontrado para teste.' });
-        return;
-      }
-
-      if (!pedido.letra_aprovada) {
-        pedido.letra_aprovada = pedido.letra_gerada;
-        pedido.termo_aceite_assinado = true;
-        pedido.termo_aceite_timestamp = new Date().toISOString();
-      }
-
-      if (!pedido.pix_copia_e_cola) {
-        const randomPixKey =
-          `00020101021226850014br.gov.bcb.pix2563pix.melodiaeterna.com.br/qr/v2/${pedido.id}` +
-          Math.random().toString(36).substring(2, 10).toUpperCase();
-        pedido.pix_copia_e_cola = randomPixKey;
-        pedido.pix_qr_code_url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(randomPixKey)}`;
-      }
-
-      if (!pedido.url_local_servidor || !pedido.url_local_servidor_2) {
-        const audioResults = await processAudioForPedido(
-          pedido.id,
-          pedido.respostas.estiloMusical,
-          pedido.letra_aprovada || pedido.letra_gerada,
-        );
-        pedido.url_original_suno = audioResults.url_original_suno;
-        pedido.url_original_suno_2 = audioResults.url_original_suno_2;
-        pedido.url_local_servidor = audioResults.url_local_servidor;
-        pedido.url_local_servidor_2 = audioResults.url_local_servidor_2;
-      }
-
-      pedido.updatedAt = new Date().toISOString();
-      savePedido(pedido);
-      res.json(pedido);
-    } catch (error: any) {
-      console.error('Erro ao preparar teste de pagamento:', error);
-      res.status(500).json({ error: error?.message || 'Erro ao abrir o teste de pagamento.' });
+  app.post('/api/payment/simulate-confirm', (req, res) => {
+    const { id } = req.body as { id: string };
+    const pedido = getPedido(id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido de musica nao encontrado.' });
+      return;
     }
-  });
 
-  app.post('/api/payment/simulate-confirm', async (req, res) => {
-    try {
-      const { id } = req.body as { id: string };
-
-      const pedido = getPedido(id);
-      if (!pedido) {
-        res.status(404).json({ error: 'Pedido de musica nao encontrado.' });
-        return;
-      }
-
-      if (pedido.status_pagamento === 'PAGO') {
-        res.json(pedido);
-        return;
-      }
-
-      pedido.status_pagamento = 'PAGO';
-      pedido.updatedAt = new Date().toISOString();
-
-      const expDate = new Date();
-      expDate.setDate(expDate.getDate() + 7);
-      pedido.data_expiracao_local = expDate.toISOString();
-
-      savePedido(pedido);
-
-      savePedido(pedido);
-      res.json(pedido);
-    } catch (error: any) {
-      console.error('Erro ao simular aprovacao de audio:', error);
-      res.status(500).json({ error: error?.message || 'Erro durante a geracao musical.' });
-    }
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + 10);
+    pedido.status_pagamento = 'PAGO';
+    pedido.status_producao = 'LIBERADO';
+    pedido.data_expiracao_local = expDate.toISOString();
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+    res.json(pedido);
   });
 
   app.get('/api/orders/:id', (req, res) => {
@@ -235,8 +708,29 @@ async function startServer() {
       res.status(404).json({ error: 'Musica/Pedido nao encontrado.' });
       return;
     }
-
     res.json(pedido);
+  });
+
+  app.get('/api/orders/:id/whatsapp-link', (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido de musica nao encontrado.' });
+      return;
+    }
+
+    const kind = req.query.kind === 'lyrics' ? 'lyrics' : 'payment';
+    const whatsappLink = kind === 'lyrics'
+      ? buildApprovalWhatsAppLink(pedido)
+      : buildClientSupportWhatsAppLink(pedido);
+    if (!whatsappLink) {
+      res.status(503).json({ error: 'WhatsApp do estudio nao configurado no servidor.' });
+      return;
+    }
+
+    res.json({
+      whatsappLink,
+      whatsappNumber: getWhatsAppNumber(),
+    });
   });
 
   app.post('/api/orders/search', (req, res) => {
@@ -245,15 +739,230 @@ async function startServer() {
       res.status(400).json({ error: 'Forneca e-mail ou WhatsApp para buscar.' });
       return;
     }
+    res.json(listPedidosByContact(email || '', whatsapp || ''));
+  });
 
-    const results = listPedidosByContact(email || '', whatsapp || '');
-    res.json(results);
+  app.post('/api/orders/:id/upload-proof', express.raw({ type: 'application/octet-stream', limit: '50mb' }), async (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    const fileName = decodeURIComponent(req.header('x-file-name') || 'comprovante');
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+    if (!bytes.length) {
+      res.status(400).json({ error: 'Arquivo de comprovante vazio.' });
+      return;
+    }
+
+    const pedidoDir = path.join(COMPROVANTES_DIR, pedido.id);
+    if (!fs.existsSync(pedidoDir)) {
+      fs.mkdirSync(pedidoDir, { recursive: true });
+    }
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = path.join(pedidoDir, `${Date.now()}_${safeName}`);
+    fs.writeFileSync(filePath, bytes);
+
+    pedido.comprovante_url_local = `/api/orders/${pedido.id}/proof/${path.basename(filePath)}`;
+    pedido.comprovante_nome_arquivo = fileName;
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+
+    let telegramSent = false;
+    let telegramError: string | null = null;
+    try {
+      const result = await sendTelegramDocument(filePath, buildTelegramProofMessage(pedido));
+      telegramSent = result.sent;
+    } catch (error: any) {
+      telegramError = error?.message || 'Falha ao enviar comprovante para o Telegram.';
+      console.error('Erro ao enviar comprovante para o Telegram:', error);
+      await notifyTelegramError(
+        'Falha ao enviar comprovante',
+        `Pedido: ${pedido.id}\n${telegramError}`,
+      );
+    }
+
+    res.json({
+      pedido,
+      telegramSent,
+      telegramError,
+    });
+  });
+
+  app.get('/api/orders/:id/proof/:file', (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido || !pedido.comprovante_url_local) {
+      res.status(404).send('Comprovante nao encontrado.');
+      return;
+    }
+
+    const filePath = path.join(COMPROVANTES_DIR, pedido.id, req.params.file);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).send('Comprovante nao encontrado.');
+      return;
+    }
+
+    res.sendFile(filePath);
+  });
+
+  app.get('/api/admin/orders', requireAdmin, (_req, res) => {
+    res.json(listAllPedidos());
+  });
+
+  app.get('/api/admin/orders/:id/whatsapp-link', requireAdmin, (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    const whatsappLink = buildApprovalWhatsAppLink(pedido);
+    if (!whatsappLink) {
+      res.status(503).json({ error: 'WhatsApp do estudio nao configurado no servidor.' });
+      return;
+    }
+
+    res.json({
+      whatsappLink,
+      whatsappNumber: getWhatsAppNumber(),
+    });
+  });
+
+  app.post('/api/admin/orders/:id/resend-telegram', requireAdmin, async (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    if (!pedido.letra_aprovada) {
+      res.status(400).json({ error: 'Esse pedido ainda nao tem letra aprovada para reenviar.' });
+      return;
+    }
+
+    try {
+      const result = await sendTelegramApprovalNotification(pedido);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Erro ao reenviar letra para o Telegram:', error);
+      await notifyTelegramError(
+        'Falha ao reenviar letra aprovada',
+        `Pedido: ${pedido.id}\n${error?.message || 'Erro desconhecido.'}`,
+      );
+      res.status(500).json({ error: error?.message || 'Falha ao reenviar letra para o Telegram.' });
+    }
+  });
+
+  app.post('/api/admin/orders/:id/upload/:slot', requireAdmin, express.raw({ type: 'application/octet-stream', limit: '300mb' }), (req, res) => {
+    const slot = req.params.slot;
+    if (slot !== 'v1' && slot !== 'v2') {
+      res.status(400).json({ error: 'Slot de upload invalido.' });
+      return;
+    }
+
+    const fileName = decodeURIComponent(req.header('x-file-name') || `${slot}.wav`);
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+    if (!bytes.length) {
+      res.status(400).json({ error: 'Arquivo vazio no upload.' });
+      return;
+    }
+
+    const tempPath = saveUploadedTempFile(fileName, bytes);
+    res.json({ tempPath, fileName });
+  });
+
+  app.post('/api/admin/orders/:id/attach-audio', requireAdmin, async (req, res) => {
+    try {
+      const { source1, source2, referenceUrl1, referenceUrl2 } = req.body as {
+        source1: string;
+        source2: string;
+        referenceUrl1?: string;
+        referenceUrl2?: string;
+      };
+
+      const pedido = getPedido(req.params.id);
+      if (!pedido) {
+        res.status(404).json({ error: 'Pedido nao encontrado.' });
+        return;
+      }
+
+      if (!source1 || !source2) {
+        res.status(400).json({ error: 'Informe as duas fontes de audio para anexar.' });
+        return;
+      }
+
+      const attached = await attachManualAudioToPedido(pedido.id, source1, source2, referenceUrl1, referenceUrl2);
+      pedido.url_local_servidor = attached.url_local_servidor;
+      pedido.url_local_servidor_2 = attached.url_local_servidor_2;
+      pedido.url_referencia_externa_1 = attached.url_referencia_externa_1;
+      pedido.url_referencia_externa_2 = attached.url_referencia_externa_2;
+      pedido.status_producao = pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS';
+      pedido.updatedAt = new Date().toISOString();
+
+      savePedido(pedido);
+      res.json(pedido);
+    } catch (error: any) {
+      console.error('Erro ao anexar audio manual:', error);
+      res.status(500).json({ error: error?.message || 'Erro ao anexar as faixas.' });
+    }
+  });
+
+  app.post('/api/admin/orders/:id/mark-paid', requireAdmin, (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + 10);
+    pedido.status_pagamento = 'PAGO';
+    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
+    pedido.data_expiracao_local = expDate.toISOString();
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+    res.json(pedido);
+  });
+
+  app.post('/api/admin/orders/:id/mark-unpaid', requireAdmin, (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    pedido.status_pagamento = 'PENDENTE';
+    pedido.data_expiracao_local = null;
+    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+    res.json(pedido);
+  });
+
+  app.post('/api/admin/orders/:id/reset-audio', requireAdmin, (req, res) => {
+    const pedido = getPedido(req.params.id);
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido nao encontrado.' });
+      return;
+    }
+
+    clearPedidoAudio(pedido.id);
+    pedido.url_original_suno = null;
+    pedido.url_original_suno_2 = null;
+    pedido.url_referencia_externa_1 = null;
+    pedido.url_referencia_externa_2 = null;
+    pedido.url_local_servidor = null;
+    pedido.url_local_servidor_2 = null;
+    pedido.status_producao = pedido.letra_aprovada ? 'AGUARDANDO_FAIXAS' : 'AGUARDANDO_APROVACAO';
+    pedido.updatedAt = new Date().toISOString();
+    savePedido(pedido);
+    res.json(pedido);
   });
 
   app.get('/audio/previa/:file', (req, res) => {
-    const fileName = `previa_${req.params.file}`;
-    const filePath = getAudioFilePath(fileName);
-
+    const filePath = getAudioFilePath(`previa_${req.params.file}`);
     if (!filePath) {
       res.status(404).send('Arquivo de previa nao encontrado.');
       return;
@@ -267,17 +976,14 @@ async function startServer() {
     const fileParam = req.params.file;
     const orderId = fileParam.split('_')[0];
     const pedido = getPedido(orderId);
-
     if (!pedido || pedido.status_pagamento !== 'PAGO') {
-      res.status(403).send('Acesso negado. Essa musica necessita de aprovacao de cobranca.');
+      res.status(403).send('Acesso negado. Essa musica precisa de confirmacao manual do pagamento.');
       return;
     }
 
-    const versionSuffix = fileParam.includes('_v2') ? '_v2' : '_v1';
-    const filePath = getAudioFilePath(`music_${orderId}_full${versionSuffix}.mp3`);
-
+    const filePath = getAudioFilePath(fileParam);
     if (!filePath) {
-      res.status(404).send('Arquivo completo de audio nao encontrado ou expirado em nosso servidor local.');
+      res.status(404).send('Arquivo completo de audio nao encontrado.');
       return;
     }
 
