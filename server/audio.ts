@@ -1,21 +1,26 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { execFile } from 'child_process';
 import ffmpegStatic from 'ffmpeg-static';
+import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = isSupabaseConfigured() ? path.join(os.tmpdir(), 'melodia-eterna') : path.join(process.cwd(), 'data');
 const AUDIO_DIR = path.join(DATA_DIR, 'audio');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const PREVIEW_DURATION_SECONDS = 60;
+const AUDIO_BUCKET = process.env.SUPABASE_AUDIO_BUCKET || 'audios';
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR);
-}
-if (!fs.existsSync(AUDIO_DIR)) {
-  fs.mkdirSync(AUDIO_DIR);
-}
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR);
+if (!isSupabaseConfigured()) {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR);
+  }
+  if (!fs.existsSync(AUDIO_DIR)) {
+    fs.mkdirSync(AUDIO_DIR);
+  }
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR);
+  }
 }
 
 function ensurePedidoAudioDir(pedidoId: string) {
@@ -128,6 +133,58 @@ function resolvePedidoFilePath(pedidoId: string, prefix: 'music_full' | 'previa'
   return match ? path.join(pedidoDir, match) : null;
 }
 
+function shouldUseSupabaseStorage() {
+  return isSupabaseConfigured() && process.env.STORAGE_PROVIDER === 'supabase';
+}
+
+function getContentType(filePath: string) {
+  if (filePath.toLowerCase().endsWith('.wav')) return 'audio/wav';
+  return 'audio/mpeg';
+}
+
+function audioObjectPath(pedidoId: string, fileName: string) {
+  return `${pedidoId}/${fileName}`;
+}
+
+async function uploadAudioObject(pedidoId: string, localPath: string, fileName: string) {
+  const supabase = getSupabaseClient();
+  const bytes = fs.readFileSync(localPath);
+  const objectPath = audioObjectPath(pedidoId, fileName);
+  const { error } = await supabase.storage
+    .from(AUDIO_BUCKET)
+    .upload(objectPath, bytes, {
+      upsert: true,
+      contentType: getContentType(localPath),
+    });
+
+  if (error) {
+    throw new Error(`Erro ao salvar audio no Supabase Storage: ${error.message}`);
+  }
+}
+
+async function downloadAudioObject(fileName: string) {
+  const parsed = path.parse(fileName);
+  const previaMatch = /^previa_(MEL-[A-Z0-9]+)_(v[12])$/i.exec(parsed.name);
+  const fullMatch = /^music_(MEL-[A-Z0-9]+)_full_(v[12])$/i.exec(parsed.name);
+  const match = previaMatch || fullMatch;
+  if (!match) return null;
+
+  const pedidoId = match[1].toUpperCase();
+  const version = match[2].toLowerCase();
+  const storedName = previaMatch ? `previa_${version}${parsed.ext}` : `music_full_${version}${parsed.ext}`;
+  const { data, error } = await getSupabaseClient()
+    .storage
+    .from(AUDIO_BUCKET)
+    .download(audioObjectPath(pedidoId, storedName));
+
+  if (error || !data) return null;
+
+  return {
+    bytes: Buffer.from(await data.arrayBuffer()),
+    contentType: getContentType(storedName),
+  };
+}
+
 function clearPedidoSlotFiles(pedidoId: string, version: 'v1' | 'v2') {
   const pedidoDir = path.join(AUDIO_DIR, pedidoId);
   if (!fs.existsSync(pedidoDir)) {
@@ -169,6 +226,13 @@ export async function attachManualAudioToPedido(
   await sliceAudio(full1, prev1, PREVIEW_DURATION_SECONDS);
   await sliceAudio(full2, prev2, PREVIEW_DURATION_SECONDS);
 
+  if (shouldUseSupabaseStorage()) {
+    await uploadAudioObject(pedidoId, full1, path.basename(full1));
+    await uploadAudioObject(pedidoId, full2, path.basename(full2));
+    await uploadAudioObject(pedidoId, prev1, path.basename(prev1));
+    await uploadAudioObject(pedidoId, prev2, path.basename(prev2));
+  }
+
   return {
     url_local_servidor: `/audio/previa/${pedidoId}_v1${ext1}`,
     url_local_servidor_2: `/audio/previa/${pedidoId}_v2${ext2}`,
@@ -196,6 +260,11 @@ export async function attachAudioSlotToPedido(
   await importSourceToPath(source, fullPath);
   await sliceAudio(fullPath, previewPath, PREVIEW_DURATION_SECONDS);
 
+  if (shouldUseSupabaseStorage()) {
+    await uploadAudioObject(pedidoId, fullPath, path.basename(fullPath));
+    await uploadAudioObject(pedidoId, previewPath, path.basename(previewPath));
+  }
+
   return {
     previewUrl: `/audio/previa/${pedidoId}_${version}${ext}`,
     referenceUrl: referenceUrl || null,
@@ -220,7 +289,40 @@ export function getAudioFilePath(fileName: string): string | null {
   return fs.existsSync(directPath) ? directPath : null;
 }
 
-export function clearPedidoAudio(pedidoId: string) {
+export async function getAudioFile(fileName: string): Promise<{ filePath?: string; bytes?: Buffer; contentType: string } | null> {
+  if (shouldUseSupabaseStorage()) {
+    return downloadAudioObject(fileName);
+  }
+
+  const filePath = getAudioFilePath(fileName);
+  if (!filePath) return null;
+
+  return {
+    filePath,
+    contentType: getContentType(filePath),
+  };
+}
+
+export async function clearPedidoAudio(pedidoId: string) {
+  if (shouldUseSupabaseStorage()) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .list(pedidoId);
+
+    if (error) {
+      throw new Error(`Erro ao listar audios no Supabase Storage: ${error.message}`);
+    }
+
+    const files = (data || []).map((item) => audioObjectPath(pedidoId, item.name));
+    if (files.length) {
+      const { error: removeError } = await supabase.storage.from(AUDIO_BUCKET).remove(files);
+      if (removeError) {
+        throw new Error(`Erro ao limpar audios no Supabase Storage: ${removeError.message}`);
+      }
+    }
+  }
+
   const pedidoDir = path.join(AUDIO_DIR, pedidoId);
   if (fs.existsSync(pedidoDir)) {
     fs.rmSync(pedidoDir, { recursive: true, force: true });
@@ -228,6 +330,10 @@ export function clearPedidoAudio(pedidoId: string) {
 }
 
 export function saveUploadedTempFile(fileName: string, bytes: Buffer) {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   const tempPath = path.join(UPLOADS_DIR, `${Date.now()}_${safeName}`);
   fs.writeFileSync(tempPath, bytes);

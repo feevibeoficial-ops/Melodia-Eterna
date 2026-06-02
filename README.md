@@ -51,6 +51,19 @@ TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 ```
 
+Para rodar em Vercel com persistencia fora do filesystem local, configure tambem:
+
+```env
+SUPABASE_URL="https://seu-projeto.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="sua_service_role_key"
+SUPABASE_ORDERS_TABLE="pedidos"
+STORAGE_PROVIDER="supabase"
+SUPABASE_AUDIO_BUCKET="audios"
+SUPABASE_PROOFS_BUCKET="comprovantes"
+TELEGRAM_WEBHOOK_SECRET="um_segredo_longo"
+APP_URL="https://seu-dominio.vercel.app"
+```
+
 ## Como rodar
 
 Modo desenvolvimento:
@@ -126,6 +139,25 @@ npm run dev
 
 Se o Telegram nao estiver configurado, o sistema continua funcionando normalmente.
 
+### Webhook do Telegram para Vercel
+
+Em ambiente serverless, use webhook em vez de polling. Com `TELEGRAM_WEBHOOK_SECRET` configurado, o servidor nao inicia polling e passa a aceitar updates em:
+
+```text
+https://seu-dominio.vercel.app/api/telegram/webhook/SEU_SEGREDO
+```
+
+Configure o webhook no Telegram:
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri "https://api.telegram.org/botSEU_TOKEN/setWebhook" `
+  -ContentType "application/json" `
+  -Body '{"url":"https://seu-dominio.vercel.app/api/telegram/webhook/SEU_SEGREDO"}'
+```
+
+Para desenvolvimento local sem `TELEGRAM_WEBHOOK_SECRET`, o polling continua disponivel.
+
 ## Gestao
 
 A gestao fica dentro do proprio app.
@@ -144,7 +176,7 @@ Senha usada:
 
 ## Upload de audio
 
-Os arquivos de cada pedido ficam organizados em:
+No modo local, os arquivos de cada pedido ficam organizados em:
 
 ```text
 data/audio/<ID_DO_PEDIDO>/
@@ -162,15 +194,35 @@ Arquivos tipicos:
 - `previa_v1.wav`
 - `previa_v2.wav`
 
+No modo Vercel/Supabase, os arquivos finais e as previas ficam no bucket privado `audios`.
+
 ## Armazenamento dos pedidos
 
-Os pedidos ficam em:
+No modo local, os pedidos ficam em:
 
 ```text
 data/pedidos/
 ```
 
 Cada pedido e salvo em JSON.
+
+No modo Vercel/Supabase, os pedidos ficam na tabela `public.pedidos`, com o objeto completo em `data jsonb`.
+
+## Supabase
+
+A migracao esta em:
+
+```text
+supabase/migrations/20260602100000_create_pedidos_storage.sql
+```
+
+Ela cria:
+- tabela `public.pedidos`
+- bucket privado `audios`
+- bucket privado `comprovantes`
+- policies para acesso via `service_role`
+
+Depois de aplicar a migracao, copie os JSONs de `data/pedidos` para a tabela se quiser migrar pedidos existentes.
 
 ## Busca de pedido pelo cliente
 
