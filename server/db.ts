@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { PedidoMusica } from '../src/types';
-import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+import type { PedidoMusica } from '../src/types.js';
+import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const PEDIDOS_DIR = path.join(DATA_DIR, 'pedidos');

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { RespostasFormulario } from '../src/types';
+import type { RespostasFormulario } from '../src/types.js';
 
 class GeminiServiceError extends Error {
   statusCode: number;

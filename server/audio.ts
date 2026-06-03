@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import ffmpegStatic from 'ffmpeg-static';
-import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
 
 const DATA_DIR = isSupabaseConfigured() ? path.join(os.tmpdir(), 'melodia-eterna') : path.join(process.cwd(), 'data');
 const AUDIO_DIR = path.join(DATA_DIR, 'audio');
