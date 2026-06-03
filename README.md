@@ -267,8 +267,8 @@ Para operacao estavel, nao e o caminho mais confiavel.
 
 ```json
 {
-  "dev": "tsx app-server.ts",
-  "build": "vite build && esbuild app-server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+  "dev": "tsx api/app-server.ts",
+  "build": "vite build && esbuild api/app-server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
   "start": "node dist/server.cjs",
   "lint": "tsc --noEmit"
 }

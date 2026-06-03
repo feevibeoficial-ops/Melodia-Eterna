@@ -8,11 +8,11 @@ import { createServer as createViteServer } from 'vite';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-import { RespostasFormulario, PedidoMusica } from './src/types';
-import { savePedido, getPedido, listPedidosByContact, listAllPedidos } from './server/db';
-import { composeLyrics, refineLyrics } from './server/gemini';
-import { attachAudioSlotToPedido, attachManualAudioToPedido, clearPedidoAudio, getAudioFile, saveUploadedTempFile } from './server/audio';
-import { getSupabaseClient, isSupabaseConfigured } from './server/supabase';
+import { RespostasFormulario, PedidoMusica } from '../src/types';
+import { savePedido, getPedido, listPedidosByContact, listAllPedidos } from '../server/db';
+import { composeLyrics, refineLyrics } from '../server/gemini';
+import { attachAudioSlotToPedido, attachManualAudioToPedido, clearPedidoAudio, getAudioFile, saveUploadedTempFile } from '../server/audio';
+import { getSupabaseClient, isSupabaseConfigured } from '../server/supabase';
 
 const DATA_DIR = isSupabaseConfigured() ? path.join(os.tmpdir(), 'melodia-eterna') : path.join(process.cwd(), 'data');
 const TELEGRAM_STATE_PATH = path.join(DATA_DIR, 'telegram-state.json');
