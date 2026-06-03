@@ -652,7 +652,15 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   startTelegramPolling();
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      time: new Date().toISOString(),
+      config: {
+        adminPassword: Boolean(process.env.ADMIN_PASSWORD),
+        supabase: isSupabaseConfigured(),
+        storageProvider: process.env.STORAGE_PROVIDER || 'local',
+      },
+    });
   });
 
   app.post('/api/telegram/webhook/:secret', async (req, res) => {
@@ -867,12 +875,17 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   });
 
   app.post('/api/orders/search', async (req, res) => {
-    const { email, whatsapp } = req.body as { email: string; whatsapp: string };
-    if (!email && !whatsapp) {
-      res.status(400).json({ error: 'Forneca e-mail ou WhatsApp para buscar.' });
-      return;
+    try {
+      const { email, whatsapp } = req.body as { email: string; whatsapp: string };
+      if (!email && !whatsapp) {
+        res.status(400).json({ error: 'Forneca e-mail ou WhatsApp para buscar.' });
+        return;
+      }
+      res.json(await listPedidosByContact(email || '', whatsapp || ''));
+    } catch (error: any) {
+      console.error('Erro ao buscar pedidos por contato:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao buscar pedidos.' });
     }
-    res.json(await listPedidosByContact(email || '', whatsapp || ''));
   });
 
   app.post('/api/orders/:id/upload-proof', express.raw({ type: 'application/octet-stream', limit: '50mb' }), async (req, res) => {
@@ -941,7 +954,12 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   });
 
   app.get('/api/admin/orders', requireAdmin, async (_req, res) => {
-    res.json(await listAllPedidos());
+    try {
+      res.json(await listAllPedidos());
+    } catch (error: any) {
+      console.error('Erro ao listar pedidos na gestao:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao listar pedidos.' });
+    }
   });
 
   app.get('/api/admin/orders/:id/whatsapp-link', requireAdmin, async (req, res) => {

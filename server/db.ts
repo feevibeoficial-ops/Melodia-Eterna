@@ -8,12 +8,26 @@ const PEDIDOS_DIR = path.join(DATA_DIR, 'pedidos');
 const ORDERS_TABLE = process.env.SUPABASE_ORDERS_TABLE || 'pedidos';
 
 if (!isSupabaseConfigured()) {
+  ensureLocalPedidosDir();
+}
+
+function ensureLocalPedidosDir() {
+  if (process.env.VERCEL) return;
+
   if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR);
+    fs.mkdirSync(DATA_DIR, { recursive: true });
   }
   if (!fs.existsSync(PEDIDOS_DIR)) {
-    fs.mkdirSync(PEDIDOS_DIR);
+    fs.mkdirSync(PEDIDOS_DIR, { recursive: true });
   }
+}
+
+function listLocalPedidoFiles() {
+  if (!fs.existsSync(PEDIDOS_DIR)) {
+    return [];
+  }
+
+  return fs.readdirSync(PEDIDOS_DIR);
 }
 
 function normalizePedido(parsed: Partial<PedidoMusica>): PedidoMusica {
@@ -42,6 +56,7 @@ export async function savePedido(pedido: PedidoMusica): Promise<void> {
     return;
   }
 
+  ensureLocalPedidosDir();
   const filePath = path.join(PEDIDOS_DIR, `${pedido.id}.json`);
   fs.writeFileSync(filePath, JSON.stringify(pedido, null, 2), 'utf-8');
 }
@@ -91,7 +106,7 @@ export async function listPedidosByContact(email: string, phone: string): Promis
     });
   }
 
-  const files = fs.readdirSync(PEDIDOS_DIR);
+  const files = listLocalPedidoFiles();
   const pedidos: PedidoMusica[] = [];
   
   const normEmail = email.trim().toLowerCase();
@@ -132,7 +147,7 @@ export async function listAllPedidos(): Promise<PedidoMusica[]> {
     return (data || []).map((row) => normalizePedido(row.data as Partial<PedidoMusica>));
   }
 
-  const files = fs.readdirSync(PEDIDOS_DIR);
+  const files = listLocalPedidoFiles();
   const pedidos: PedidoMusica[] = [];
 
   for (const file of files) {

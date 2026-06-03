@@ -8,6 +8,10 @@
   },
   "rewrites": [
     {
+      "source": "/favicon.ico",
+      "destination": "/favicon.svg"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/index"
     },
@@ -21,4 +25,3 @@
     }
   ]
 }
-
