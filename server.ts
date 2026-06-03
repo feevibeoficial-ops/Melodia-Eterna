@@ -19,7 +19,7 @@ const TELEGRAM_STATE_PATH = path.join(DATA_DIR, 'telegram-state.json');
 const COMPROVANTES_DIR = path.join(DATA_DIR, 'comprovantes');
 const PROOFS_BUCKET = process.env.SUPABASE_PROOFS_BUCKET || 'comprovantes';
 
-if (!shouldUseSupabaseStorage() && !fs.existsSync(COMPROVANTES_DIR)) {
+if (!process.env.VERCEL && !shouldUseSupabaseStorage() && !fs.existsSync(COMPROVANTES_DIR)) {
   fs.mkdirSync(COMPROVANTES_DIR, { recursive: true });
 }
 
