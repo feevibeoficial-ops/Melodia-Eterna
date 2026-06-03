@@ -113,7 +113,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
 
   function openWhatsApp() {
     if (!whatsAppLink) return;
-    window.location.href = whatsAppLink;
+    window.open(whatsAppLink, '_blank', 'noopener,noreferrer');
   }
 
   function formatTime(secs: number) {
