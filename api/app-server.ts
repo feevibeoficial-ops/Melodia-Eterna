@@ -392,15 +392,8 @@ function buildTelegramHelpMessage() {
     '/resumo - resumo do sistema',
     '/help - mostra esta ajuda',
     '/pago MEL-XXXX - aprova o pagamento do pedido',
-    '/musica - fluxo guiado para adicionar musicas (V1 e V2) a um pedido',
+    '/musica - adiciona musicas (V1 e V2) a um pedido',
     '/cancelar - cancela a operacao em andamento',
-    '',
-    'Para anexar musicas em pedidos diretamente por arquivo:',
-    '- envie a faixa com legenda: MEL-XXXXXXX v1',
-    '- envie a outra faixa com legenda: MEL-XXXXXXX v2',
-    '',
-    'Exemplo:',
-    'MEL-LJSGQ0DTN v1',
   ].join('\n');
 }
 
@@ -586,12 +579,14 @@ async function handleTelegramSession(
       if (lowerInput === 'pular' || lowerInput === 'pula') {
         try {
           await sendTelegramReply(chatId, 'Salvando informacoes e gerando previa V1...');
+          console.log(`[/musica] Iniciando attachAudioSlotToPedido V1 para ${session.pedidoId} com arquivo ${session.tempPathV1}`);
           const attachedV1 = await attachAudioSlotToPedido(
             session.pedidoId!,
             'v1',
             session.tempPathV1!,
             session.urlV1 || undefined
           );
+          console.log(`[/musica] attachAudioSlotToPedido V1 concluido para ${session.pedidoId}:`, attachedV1);
 
           const pedido = await getPedido(session.pedidoId!);
           if (pedido) {
@@ -665,19 +660,23 @@ async function handleTelegramSession(
 
       try {
         await sendTelegramReply(chatId, 'Salvando informacoes e gerando previas V1 e V2...');
+        console.log(`[/musica] Iniciando attachAudioSlotToPedido V1 para ${session.pedidoId} com arquivo ${session.tempPathV1}`);
         const attachedV1 = await attachAudioSlotToPedido(
           session.pedidoId!,
           'v1',
           session.tempPathV1!,
           session.urlV1 || undefined
         );
+        console.log(`[/musica] attachAudioSlotToPedido V1 concluido para ${session.pedidoId}:`, attachedV1);
 
+        console.log(`[/musica] Iniciando attachAudioSlotToPedido V2 para ${session.pedidoId} com arquivo ${session.tempPathV2}`);
         const attachedV2 = await attachAudioSlotToPedido(
           session.pedidoId!,
           'v2',
           session.tempPathV2!,
           urlV2 || undefined
         );
+        console.log(`[/musica] attachAudioSlotToPedido V2 concluido para ${session.pedidoId}:`, attachedV2);
 
         const pedido = await getPedido(session.pedidoId!);
         if (pedido) {
@@ -787,9 +786,31 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
 
   if (text === '/musica') {
     telegramSessions.set(chatId, { step: 'awaiting_pedido_id' });
+
+    let pendingList = '';
+    try {
+      const allPedidos = await listAllPedidos();
+      const pending = allPedidos.filter((p) => p.status_producao === 'AGUARDANDO_FAIXAS');
+      if (pending.length > 0) {
+        const lines = pending.slice(0, 15).map((p) => {
+          const tema = p.respostas.temaId || 'sem tema';
+          const estilo = p.respostas.estiloMusical || 'sem estilo';
+          return `\u2022 \`${p.id}\` - ${tema} (${estilo})`;
+        });
+        pendingList = '\n\n\ud83d\udccb *Pedidos aguardando faixas:*\n' + lines.join('\n');
+        if (pending.length > 15) {
+          pendingList += `\n_...e mais ${pending.length - 15} pedidos_`;
+        }
+      } else {
+        pendingList = '\n\n_Nenhum pedido aguardando faixas no momento._';
+      }
+    } catch (error) {
+      console.error('Erro ao listar pedidos pendentes para /musica:', error);
+    }
+
     await sendTelegramReply(
       chatId,
-      '\ud83c\udfb5 *Adicionar Musica ao Sistema*\n\nPor favor, digite o ID do pedido (ex: `MEL-LJSGQ0DTN`):\n\n\ud83d\udca1 _Voce pode enviar /cancelar a qualquer momento para sair._',
+      `\ud83c\udfb5 *Adicionar Musica ao Sistema*${pendingList}\n\nDigite o ID do pedido (ex: \`MEL-LJSGQ0DTN\`):\n\n\ud83d\udca1 _Voce pode enviar /cancelar a qualquer momento para sair._`,
       'Markdown'
     );
     return;
