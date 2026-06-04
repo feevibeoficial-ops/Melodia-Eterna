@@ -663,6 +663,27 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     });
   });
 
+  app.get('/api/telegram/webhook', (_req, res) => {
+    res.status(400).json({
+      error: 'Webhook do Telegram requer um segredo na URL e aceita apenas POST.',
+      expectedPath: '/api/telegram/webhook/:secret',
+      webhookConfigured: Boolean(getTelegramWebhookSecret()),
+    });
+  });
+
+  app.get('/api/telegram/webhook/:secret', (req, res) => {
+    const configuredSecret = getTelegramWebhookSecret();
+    if (!configuredSecret || req.params.secret !== configuredSecret) {
+      res.status(401).json({ error: 'Webhook do Telegram nao autorizado.' });
+      return;
+    }
+
+    res.status(405).json({
+      error: 'Webhook do Telegram aceita apenas POST.',
+      expectedMethod: 'POST',
+    });
+  });
+
   app.post('/api/telegram/webhook/:secret', async (req, res) => {
     const configuredSecret = getTelegramWebhookSecret();
     if (!configuredSecret || req.params.secret !== configuredSecret) {
