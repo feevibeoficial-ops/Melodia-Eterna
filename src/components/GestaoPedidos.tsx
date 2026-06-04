@@ -7,6 +7,8 @@ interface GestaoPedidosProps {
   onBack: () => void;
 }
 
+type GestaoTab = 'pedidos' | 'modelos' | 'prompts';
+
 type Drafts = Record<string, {
   source1: string;
   source2: string;
@@ -28,6 +30,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
   const [themes, setThemes] = useState<TemaConfig[]>(DEFAULT_TEMAS);
   const [promptBusyId, setPromptBusyId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<GestaoTab>('pedidos');
 
   async function loadOrders() {
     setLoading(true);
@@ -483,12 +486,36 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         </p>
       </div>
 
+      <div className="bg-white border border-natural-border rounded-3xl p-2 shadow-xs">
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: 'pedidos', label: `Pedidos (${orders.length})` },
+            { id: 'modelos', label: `Modelos (${themes.length})` },
+            { id: 'prompts', label: `Prompts (${Object.keys(promptTemplates).length || themes.length})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id as GestaoTab)}
+              className={`rounded-2xl px-4 py-3 text-sm font-semibold cursor-pointer transition-all ${
+                activeTab === tab.id
+                  ? 'bg-natural-sage text-white shadow-xs'
+                  : 'bg-[#FAF8F5] text-natural-subtext hover:text-natural-dark'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === 'modelos' && (
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de musica e perguntas</h3>
             <p className="text-sm text-natural-subtext mt-1">
-              Cadastre novos modelos, ajuste tema, texto e questionario sem alterar o codigo.
+              Cadastre novos modelos, ajuste nome, descricao e questionario sem alterar o codigo.
             </p>
           </div>
           <button
@@ -505,8 +532,17 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             const saving = promptBusyId === theme.id;
             return (
               <div key={theme.id} className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4 space-y-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <p className="text-sm font-bold text-natural-dark">{theme.titulo}</p>
+                    <p className="text-[11px] text-natural-subtext">ID tecnico: {theme.id}</p>
+                  </div>
+                  <div className="text-[11px] text-natural-subtext">
+                    {theme.perguntas.length} pergunta(s)
+                  </div>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-3">
-                  <input value={theme.id} onChange={(e) => setThemeDraft(theme.id, { id: e.target.value })} placeholder="ID do modelo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="Titulo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="Descricao" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
                   <input value={theme.emoji} onChange={(e) => setThemeDraft(theme.id, { emoji: e.target.value })} placeholder="Emoji" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
@@ -546,13 +582,21 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
           })}
         </div>
       </div>
+      )}
 
+      {activeTab === 'prompts' && (
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
         <div>
           <h3 className="text-2xl font-bold font-display text-natural-dark">Prompts por tema</h3>
           <p className="text-sm text-natural-subtext mt-1">
-            Edite o prompt de geracao e o prompt de refino separadamente para cada tipo de musica. Esses templates passam a ser lidos do Supabase.
+            Cada tema agora pode ter seu proprio prompt completo. O sistema injeta apenas respostas do cliente, estilo, voz e regras especiais.
           </p>
+        </div>
+
+        <div className="rounded-2xl border border-[#E8E2D9] bg-[#FAF8F5] px-4 py-3 text-xs text-natural-subtext leading-relaxed">
+          Placeholders disponiveis no prompt de geracao: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
+          <br />
+          No prompt de refino: <strong>{'{{feedback_usuario}}'}</strong>, <strong>{'{{letra_anterior}}'}</strong>, <strong>{'{{revelacao_refine_regra}}'}</strong>.
         </div>
 
         <div className="space-y-4">
@@ -601,6 +645,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
           })}
         </div>
       </div>
+      )}
 
       {pageError && (
         <div className="rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-sm text-[#9A5B33]">
@@ -608,7 +653,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         </div>
       )}
 
-      {loading ? (
+      {activeTab === 'pedidos' && (loading ? (
         <div className="py-20 text-center text-natural-subtext">
           <LoaderCircle className="w-8 h-8 animate-spin mx-auto mb-3" />
           Carregando pedidos...
@@ -694,7 +739,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 }

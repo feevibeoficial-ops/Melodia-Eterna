@@ -171,7 +171,9 @@ export default function App() {
       <header className="border-b border-natural-border bg-white/72 backdrop-blur-md sticky top-0 z-50 py-4.5 px-6 select-none shadow-3xs">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div onClick={handleRestart} className="flex items-center gap-2 cursor-pointer hover:opacity-85 transition-opacity">
-            <img src={BRANDING.logo} alt="Melodia Eterna" className="h-10 w-auto object-contain drop-shadow-xs" />
+            <span className="font-extrabold text-lg tracking-tight text-natural-dark font-display">
+              Melodia<span className="text-natural-sage">Eterna</span>
+            </span>
           </div>
 
           <div className="flex items-center gap-3">

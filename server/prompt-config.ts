@@ -10,9 +10,9 @@ const PROMPTS_FILE = path.join(DATA_DIR, 'prompt-templates.json');
 const PROMPT_TEMPLATES_TABLE = process.env.SUPABASE_PROMPT_TEMPLATES_TABLE || 'prompt_templates';
 
 const DEFAULT_COMPOSE_TEMPLATE = `Voce e um compositor musical senior com extrema sensibilidade poetica.
-Sua missao e criar a letra de uma musica altamente emocionante e personalizada com base nas seguintes respostas reais fornecidas pelo cliente:
+Sua missao e criar a letra de uma musica altamente emocionante e personalizada com base nas respostas reais fornecidas pelo cliente.
 
-{{tema_detail}}
+{{respostas_cliente}}
 
 Estilo musical desejado: {{estilo_musical}}
 Voz preferida: {{voz_preferida}}
@@ -46,87 +46,16 @@ DIRETRIZES:
 
 Escreva apenas a nova letra, sem explicar alteracoes.`;
 
-function buildThemeDetail(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
-  if (resp.temaId === 'romantica') {
-    return `Esta e uma musica romantica em primeira pessoa.
-Nome do casal: ${resp.respostas.p1}
-Data de inicio/casamento: ${resp.respostas.p2}
-Como se conheceram: ${resp.respostas.p3}
-Qualidades que mais apaixonam: ${resp.respostas.p4}
-Momentos inesqueciveis: ${resp.respostas.p5}
-Apelidos/piadas/manias: ${resp.respostas.p6}`;
-  }
-
-  if (resp.temaId === 'mae') {
-    return `Esta e uma musica de homenagem de filho(a) para sua mae.
-Nome/apelido carinhoso dela: ${resp.respostas.p1}
-Ensinamentos, conselhos e frases classicas dela: ${resp.respostas.p2}
-Maior licao de resiliencia, amor ou sacrificio dela: ${resp.respostas.p3}
-Lembranca doce de infancia ou cheiro/comida do lar: ${resp.respostas.p4}
-O que deseja agradecer e declarar: ${resp.respostas.p5}`;
-  }
-
-  if (resp.temaId === 'pai') {
-    return `Esta e uma musica de homenagem para seu pai.
-Nome/como a familia o chama: ${resp.respostas.p1}
-Passatempo favorito ou mania engracada: ${resp.respostas.p2}
-Conselho mais marcante ou conversa valiosa: ${resp.respostas.p3}
-Historia de protecao, parceria ou orgulho: ${resp.respostas.p4}
-3 palavras fundamentais que o definem: ${resp.respostas.p5}`;
-  }
-
-  if (resp.temaId === 'filho') {
-    return `Esta e uma musica de homenagem de pai, mae ou responsavel para um filho ou filha.
-Nome/apelido carinhoso: ${resp.respostas.p1}
-Chegada na vida e inicio dessa historia: ${resp.respostas.p2}
-Qualidades e atitudes que enchem o coracao de orgulho: ${resp.respostas.p3}
-Momento inesquecivel vivido juntos: ${resp.respostas.p4}
-Sonhos, desejos e mensagens para o futuro: ${resp.respostas.p5}
-Apelidos, brincadeiras, manias ou detalhes especiais: ${resp.respostas.p6}`;
-  }
-
-  if (resp.temaId === 'debutante') {
-    return `Esta e uma musica de homenagem para debutante de 15 anos.
-Nome da debutante e data especial: ${resp.respostas.p1}
-Como os pais descrevem a transicao dela/orgulhos: ${resp.respostas.p2}
-Hobbies e preferencias (danca, make, redes, etc): ${resp.respostas.p3}
-Sonhos e planos para o futuro: ${resp.respostas.p4}
-Fato fofo ou engracado da infancia: ${resp.respostas.p5}`;
-  }
-
-  if (resp.temaId === 'amizade') {
-    return `Esta e uma musica sobre amizade verdadeira para celebrar nosso grupo de amigos.
-Nomes envolvidos: ${resp.respostas.p1}
-Como e ha quanto tempo comecou, de onde se conhecem: ${resp.respostas.p2}
-Viagens, roles, loucuras compartilhadas: ${resp.respostas.p3}
-Situacao marcante de uniao, apoio ou perrengue superado: ${resp.respostas.p4}
-Piadas de grupo, manias e expressoes internas de voces: ${resp.respostas.p5}`;
-  }
-
+function extractBabyName(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
   const namesAns = resp.respostas.p5 || '';
-  let boyName = 'Teo';
-  const girlName = 'Livia';
+  const normalized = namesAns.replace(/\s+/g, ' ').trim();
+  const match = normalized.match(/menino.*?(?:chamara|ser[aá]|nome(?: é|:)?)[\s"]*([\p{L}\p{N}_-]+)/iu);
+  const boyName = match?.[1]?.trim() || 'Teo';
 
-  if (namesAns.toLowerCase().includes('menino')) {
-    const parts = namesAns.split(/menino/i);
-    const boyPart = parts[1] ? parts[1].split(/[,\sE\s]/i)[0] : '';
-    if (boyPart.trim().length > 1) {
-      boyName = boyPart.trim().replace(/[^\p{L}\p{N}_-]/gu, '');
-    }
-  }
+  const girlMatch = normalized.match(/menina.*?(?:chamara|ser[aá]|nome(?: é|:)?)[\s"]*([\p{L}\p{N}_-]+)/iu);
+  const girlName = girlMatch?.[1]?.trim() || 'Livia';
 
-  const babyName = selectedGenderForRevelacao === 'menina' ? girlName : boyName;
-  return `Esta e uma musica emocionante para um cha revelacao de bebe.
-Nome dos pais: ${resp.respostas.p1}
-Descoberta da gravidez e a doce ansiedade: ${resp.respostas.p2}
-Palpites da familia: ${resp.respostas.p3}
-Mensagem de amor de que ja o(a) amam muito: ${resp.respostas.p4}
-SEXO REVELADO NO CHA: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}
-NOME ESCOLHIDO DO BEBE: "${babyName}"
-
-REGRA ABSOLUTA:
-Voce deve compor a letra de modo que a revelacao do nome "${babyName}" aconteca exatamente na ultima palavra de toda a letra.
-Nao use o nome do bebe em nenhum outro lugar da musica.`;
+  return selectedGenderForRevelacao === 'menina' ? girlName : boyName;
 }
 
 function getTemaIds(): TemaId[] {
@@ -223,13 +152,33 @@ function applyTemplate(template: string, values: Record<string, string>) {
   return template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_match, key: string) => values[key] ?? '');
 }
 
+async function buildRespostasCliente(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
+  const themes = await listThemes().catch(() => []);
+  const theme = themes.find((item) => item.id === resp.temaId);
+  const linhas = [
+    `Tema selecionado: ${theme?.titulo || resp.temaId}`,
+    ...Object.entries(resp.respostas).map(([questionId, answer]) => {
+      const question = theme?.perguntas.find((item) => item.id === questionId);
+      const label = question?.label || questionId;
+      return `${label}: ${answer}`;
+    }),
+  ];
+
+  if (resp.temaId === 'revelacao') {
+    linhas.push(`Sexo revelado no cha: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}`);
+    linhas.push(`Nome escolhido do bebe: ${extractBabyName(resp, selectedGenderForRevelacao)}`);
+  }
+
+  return linhas.join('\n');
+}
+
 export async function buildComposePrompt(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
-  const babyName = selectedGenderForRevelacao === 'menina' ? 'Livia' : 'Teo';
+  const babyName = extractBabyName(resp, selectedGenderForRevelacao);
 
   return applyTemplate(promptTemplate?.composeTemplate || DEFAULT_COMPOSE_TEMPLATE, {
-    tema_detail: buildThemeDetail(resp, selectedGenderForRevelacao),
+    respostas_cliente: await buildRespostasCliente(resp, selectedGenderForRevelacao),
     estilo_musical: resp.estiloMusical,
     voz_preferida: resp.provVoice,
     revelacao_regra: resp.temaId === 'revelacao'
@@ -246,7 +195,7 @@ export async function buildRefinePrompt(
 ) {
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
-  const babyName = selectedGenderForRevelacao === 'menina' ? 'Livia' : 'Teo';
+  const babyName = extractBabyName(resp, selectedGenderForRevelacao);
 
   return applyTemplate(promptTemplate?.refineTemplate || DEFAULT_REFINE_TEMPLATE, {
     feedback_usuario: feedbackUsuario,

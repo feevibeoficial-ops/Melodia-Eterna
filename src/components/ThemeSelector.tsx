@@ -1,7 +1,6 @@
 import { motion } from 'motion/react';
 import { TemaConfig } from '../types';
 import { ArrowRight, Music, Search } from 'lucide-react';
-import { BRANDING } from '../branding';
 
 interface ThemeSelectorProps {
   themes: TemaConfig[];
@@ -13,14 +12,6 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
   return (
     <div id="theme-selector-root" className="max-w-5xl mx-auto px-4 py-8">
       <div className="text-center mb-12">
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-6"
-        >
-          <img src={BRANDING.logo} alt="Melodia Eterna" className="h-18 md:h-24 w-auto mx-auto object-contain drop-shadow-md" />
-        </motion.div>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
