@@ -103,7 +103,39 @@ async function getProofFile(pedidoId: string, fileName: string) {
 }
 
 function makePixCode(id: string) {
-  return `00020101021226850014br.gov.bcb.pix2563pix.melodiaeterna.com.br/qr/v2/${id}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+  const pixKey = 'e863ad88-7ae6-43a6-8778-a8505dcd80be';
+  const merchantName = 'MELODIA ETERNA';
+  const merchantCity = 'RIO BRANCO';
+  const amount = '19.99';
+  const txid = id.replace(/[^A-Z0-9]/gi, '').slice(0, 25) || 'MELODIAETERNA';
+
+  const formatField = (fieldId: string, value: string) => `${fieldId}${value.length.toString().padStart(2, '0')}${value}`;
+  const merchantAccountInfo = formatField('00', 'br.gov.bcb.pix') + formatField('01', pixKey);
+  const additionalData = formatField('05', txid);
+  const payloadWithoutCrc = [
+    formatField('00', '01'),
+    formatField('01', '12'),
+    formatField('26', merchantAccountInfo),
+    formatField('52', '0000'),
+    formatField('53', '986'),
+    formatField('54', amount),
+    formatField('58', 'BR'),
+    formatField('59', merchantName.slice(0, 25)),
+    formatField('60', merchantCity.slice(0, 15)),
+    formatField('62', additionalData),
+    '6304',
+  ].join('');
+
+  let crc = 0xFFFF;
+  for (let i = 0; i < payloadWithoutCrc.length; i += 1) {
+    crc ^= payloadWithoutCrc.charCodeAt(i) << 8;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 0x8000) !== 0 ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+
+  return `${payloadWithoutCrc}${crc.toString(16).toUpperCase().padStart(4, '0')}`;
 }
 
 function createInteractionId() {
@@ -1302,8 +1334,8 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       pedido.termo_aceite_assinado = true;
       pedido.termo_aceite_timestamp = new Date().toISOString();
       pedido.status_producao = 'AGUARDANDO_FAIXAS';
-      pedido.pix_copia_e_cola = pedido.pix_copia_e_cola || makePixCode(id);
-      pedido.pix_qr_code_url = pedido.pix_qr_code_url || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pedido.pix_copia_e_cola)}`;
+      pedido.pix_copia_e_cola = makePixCode(id);
+      pedido.pix_qr_code_url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pedido.pix_copia_e_cola)}`;
       pedido.updatedAt = new Date().toISOString();
 
       await savePedido(pedido);

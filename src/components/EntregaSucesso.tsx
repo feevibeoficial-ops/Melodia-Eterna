@@ -9,23 +9,35 @@ interface EntregaSucessoProps {
 }
 
 export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProps) {
+  const hasV1 = Boolean(pedido.url_local_servidor);
+  const hasV2 = Boolean(pedido.url_local_servidor_2);
   const [activeVersion, setActiveVersion] = useState<'v1' | 'v2'>('v1');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(240); // Standard is approx 4 mins
+  const [duration, setDuration] = useState(240);
   const [copiedLyrics, setCopiedLyrics] = useState(false);
   const [showLyrics, setShowLyrics] = useState(true);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Sync player
+  useEffect(() => {
+    setActiveVersion(hasV1 ? 'v1' : 'v2');
+  }, [pedido.id, hasV1, hasV2]);
+
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
     }
 
-    // Direct stream link from our server
-    const fullAudioUrl = activeVersion === 'v1' ? `/audio/full/${pedido.id}_v1.mp3` : `/audio/full/${pedido.id}_v2.mp3`;
+    if (!hasV1 && !hasV2) {
+      audioRef.current = null;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      return;
+    }
+
+    const resolvedVersion = activeVersion === 'v1' && !hasV1 ? 'v2' : activeVersion === 'v2' && !hasV2 ? 'v1' : activeVersion;
+    const fullAudioUrl = resolvedVersion === 'v1' ? `/audio/full/${pedido.id}_v1.mp3` : `/audio/full/${pedido.id}_v2.mp3`;
     const audio = new Audio(fullAudioUrl);
 
     audio.addEventListener('timeupdate', () => {
@@ -50,7 +62,7 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
     return () => {
       audio.pause();
     };
-  }, [activeVersion, pedido.id]);
+  }, [activeVersion, pedido.id, hasV1, hasV2]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -106,8 +118,6 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
 
   return (
     <div id="success-delivery-root" className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-      
-      {/* Top Banner Success */}
       <div className="text-center bg-[#EBF5EE] border border-[#C8E6C9] p-6 rounded-3xl md:p-8">
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
@@ -117,14 +127,16 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
         >
           <CheckCircle className="w-7 h-7" />
         </motion.div>
-        
+
         <h2 className="text-2xl md:text-3xl font-extrabold font-display text-natural-dark tracking-tight">
           Pagamento Confirmado! Música Concluída!
         </h2>
         <p className="text-sm text-natural-subtext max-w-lg mx-auto font-light leading-relaxed mt-1">
-          O Pix foi compensado instantaneamente. Seus dois arquivos musicais definitivos já foram compilados e estão prontos para tocar a alma e emocionar!
+          {hasV1 && hasV2
+            ? 'O Pix foi compensado instantaneamente. Seus dois arquivos musicais definitivos já foram compilados e estão prontos para tocar a alma e emocionar!'
+            : 'O Pix foi compensado instantaneamente. Seu arquivo musical definitivo já foi compilado e está pronto para tocar a alma e emocionar!'}
         </p>
-        
+
         <div className="flex gap-4 justify-center items-center mt-5 text-[11px] text-natural-caramel bg-natural-sage-light border border-natural-border py-2.5 px-4 rounded-xl max-w-sm mx-auto select-none font-mono">
           <Calendar className="w-3.5 h-3.5" />
           <span>EXPIRAÇÃO INTERNA: {formatDate(pedido.data_expiracao_local)}</span>
@@ -132,8 +144,6 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Left column: Vinyl Disc and Full Player controls */}
         <div className="lg:col-span-6 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs space-y-6">
           <div className="flex justify-between items-center border-b border-natural-border pb-3">
             <h4 className="text-sm font-semibold tracking-wide text-natural-dark uppercase font-display select-none">
@@ -144,14 +154,17 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             </span>
           </div>
 
-          {/* Toggle between V1 and V2 */}
-          <div className="flex gap-2.5 bg-natural-sage-light p-1 border border-natural-border rounded-xl">
+          <div
+            className="flex gap-2.5 bg-natural-sage-light p-1 border border-natural-border rounded-xl"
+            style={{ display: hasV1 && hasV2 ? undefined : 'none' }}
+          >
             <button
               onClick={() => {
                 setActiveVersion('v1');
                 setIsPlaying(false);
                 setCurrentTime(0);
               }}
+              style={{ display: hasV1 ? undefined : 'none' }}
               className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
                 activeVersion === 'v1'
                   ? 'bg-white border border-natural-border text-natural-dark shadow-3xs'
@@ -166,6 +179,7 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
                 setIsPlaying(false);
                 setCurrentTime(0);
               }}
+              style={{ display: hasV2 ? undefined : 'none' }}
               className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all cursor-pointer ${
                 activeVersion === 'v2'
                   ? 'bg-white border border-natural-border text-natural-dark shadow-3xs'
@@ -176,18 +190,15 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             </button>
           </div>
 
-          {/* Album visual disc cover */}
           <div className="flex flex-col items-center py-4">
             <motion.div
               animate={isPlaying ? { rotate: 360 } : {}}
               transition={{ repeat: Infinity, duration: 4.5, ease: 'linear' }}
               className="w-40 h-40 rounded-full border-12 border-natural-dark bg-natural-caramel p-1 shadow-lg relative flex items-center justify-center select-none"
             >
-              {/* Grooves on vinyl */}
               <div className="absolute inset-1 rounded-full border border-black/10" />
               <div className="absolute inset-4 rounded-full border border-black/10" />
               <div className="absolute inset-8 rounded-full border border-black/10" />
-              {/* Inner ring */}
               <div className="w-12 h-12 rounded-full bg-white shadow-inner flex items-center justify-center">
                 <div className="w-2 h-2 rounded-full bg-natural-dark" />
               </div>
@@ -197,7 +208,6 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             </p>
           </div>
 
-          {/* Full Player seeker */}
           <div className="space-y-4">
             <div className="flex items-center justify-between text-xs font-mono text-natural-subtext">
               <span>{formatTime(currentTime)}</span>
@@ -236,14 +246,14 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             </div>
           </div>
 
-          {/* Downloads Triggers */}
           <div className="border-t border-natural-border pt-5 space-y-3">
             <h5 className="text-xs font-bold text-natural-subtext uppercase tracking-widest pl-1 select-none font-sans">
-              Baixar suas Faixas (MP3 de alta qualidade)
+              {hasV1 && hasV2 ? 'Baixar suas Faixas (MP3 de alta qualidade)' : 'Baixar sua Faixa (MP3 de alta qualidade)'}
             </h5>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className={`grid grid-cols-1 gap-3 ${hasV1 && hasV2 ? 'sm:grid-cols-2' : ''}`}>
               <a
-                href={`/audio/full/${pedido.id}_v1.mp3`}
+                href={hasV1 ? `/audio/full/${pedido.id}_v1.mp3` : undefined}
+                style={{ display: hasV1 ? undefined : 'none' }}
                 download={`Melodia_Eterna_${pedido.id}_Versao1.mp3`}
                 className="flex items-center justify-center gap-2 py-3 px-4 bg-natural-sage-light hover:bg-[#FAF8F5] text-natural-dark font-semibold text-xs rounded-xl border border-natural-border shadow-3xs transition-all cursor-pointer"
               >
@@ -251,7 +261,8 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
                 Versão Clássica 01
               </a>
               <a
-                href={`/audio/full/${pedido.id}_v2.mp3`}
+                href={hasV2 ? `/audio/full/${pedido.id}_v2.mp3` : undefined}
+                style={{ display: hasV2 ? undefined : 'none' }}
                 download={`Melodia_Eterna_${pedido.id}_Versao2.mp3`}
                 className="flex items-center justify-center gap-2 py-3 px-4 bg-natural-sage-light hover:bg-[#FAF8F5] text-natural-dark font-semibold text-xs rounded-xl border border-natural-border shadow-3xs transition-all cursor-pointer"
               >
@@ -260,11 +271,10 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
               </a>
             </div>
 
-            {/* Backups trigger */}
             {pedido.url_referencia_externa_1 && (
               <div className="pt-3">
                 <span className="text-[10px] text-natural-subtext block text-center">
-                  Referencias salvas para consulta futura:
+                  Referências salvas para consulta futura:
                 </span>
                 <div className="flex gap-4 mt-2 justify-center font-mono">
                   <a
@@ -273,7 +283,7 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
                     rel="noreferrer"
                     className="text-[10px] font-semibold text-natural-sage hover:underline flex items-center gap-1"
                   >
-                    Referencia V1 <ExternalLink className="w-3 h-3" />
+                    Referência V1 <ExternalLink className="w-3 h-3" />
                   </a>
                   <a
                     href={pedido.url_referencia_externa_2 || undefined}
@@ -281,16 +291,14 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
                     rel="noreferrer"
                     className="text-[10px] font-semibold text-natural-sage hover:underline flex items-center gap-1"
                   >
-                    Referencia V2 <ExternalLink className="w-3 h-3" />
+                    Referência V2 <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               </div>
             )}
           </div>
-
         </div>
 
-        {/* Right column: Approved Lyrics detail */}
         <div className="lg:col-span-6 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center border-b border-natural-border pb-3 mb-4">
@@ -313,7 +321,6 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
               </button>
             </div>
 
-            {/* Collapse view button for mobile */}
             <button
               onClick={() => setShowLyrics(!showLyrics)}
               className="lg:hidden w-full py-2 bg-natural-sage-light text-natural-dark rounded border border-natural-border text-xs font-semibold flex items-center justify-center gap-1 mb-3"
@@ -338,19 +345,17 @@ export default function EntregaSucesso({ pedido, onRestart }: EntregaSucessoProp
             )}
           </div>
 
-          <div className="border-t border-natural-border pt-6 mt-6">
+          <div className="pt-5 mt-6 border-t border-natural-border">
             <button
+              type="button"
               onClick={onRestart}
-              className="w-full py-4 px-5 bg-natural-sage hover:bg-natural-sage/90 text-white text-sm font-bold rounded-2xl flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              className="w-full py-3 px-4 bg-natural-dark text-white text-xs font-semibold rounded-xl cursor-pointer"
             >
-              Criar Outra Música Personalizada 🌟
+              Fazer novo pedido
             </button>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }

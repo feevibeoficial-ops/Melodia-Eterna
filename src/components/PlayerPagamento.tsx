@@ -13,6 +13,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
   const hasV1 = Boolean(pedido.url_local_servidor);
   const hasV2 = Boolean(pedido.url_local_servidor_2);
   const hasPreviews = hasV1 || hasV2;
+  const hasBothPreviews = hasV1 && hasV2;
   const [copied, setCopied] = useState(false);
   const [activeVersion, setActiveVersion] = useState<'v1' | 'v2'>(hasV1 ? 'v1' : 'v2');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -69,11 +70,9 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
       };
     }
 
-    const whatsAppKind = 'payment';
-
     async function loadWhatsAppLink() {
       try {
-        const response = await fetch(`/api/orders/${pedido.id}/whatsapp-link?kind=${whatsAppKind}`);
+        const response = await fetch(`/api/orders/${pedido.id}/whatsapp-link?kind=payment`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Falha ao preparar o WhatsApp.');
         if (cancelled) return;
@@ -158,7 +157,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
       }
 
       setProofMessage(data.telegramSent
-        ? 'Comprovante enviado. Nossa equipe recebeu a notificacao no Telegram.'
+        ? 'Comprovante enviado. Nossa equipe recebeu a notificação no Telegram.'
         : 'Comprovante salvo com sucesso.');
       await onReload();
     } catch (err: any) {
@@ -176,15 +175,17 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
           transition={{ repeat: Infinity, duration: 2 }}
           className="inline-flex items-center gap-1.5 px-3 py-1 bg-natural-sage/10 text-natural-sage rounded-full text-xs font-semibold uppercase tracking-wider mb-2"
         >
-          <Volume2 className="w-3.5 h-3.5" /> {hasPreviews ? 'Previa Disponivel' : 'Producao Manual em Andamento'}
+          <Volume2 className="w-3.5 h-3.5" /> {hasPreviews ? 'Prévia Disponível' : 'Produção Manual em Andamento'}
         </motion.span>
         <h2 className="text-3xl font-bold font-display text-natural-dark tracking-tight">
-          {hasPreviews ? 'Ouça uma Previa da Sua Cancao' : 'Sua Letra ja Foi Enviada para Producao'}
+          {hasPreviews ? 'Ouça uma Prévia da Sua Canção' : 'Sua Letra já Foi Enviada para Produção'}
         </h2>
         <p className="text-sm text-natural-subtext max-w-md mx-auto font-light mt-1 pl-1">
           {hasPreviews
-            ? 'As duas previas ja estao prontas. Se gostar, envie o comprovante no WhatsApp e aguarde a liberacao manual do download.'
-            : 'Sua letra aprovada ja pode ser produzida manualmente. Assim que as faixas forem anexadas, as previas aparecerao aqui automaticamente.'}
+            ? (hasBothPreviews
+              ? 'As duas prévias já estão prontas. Se gostar, envie o comprovante no WhatsApp e aguarde a liberação manual do download.'
+              : 'Uma prévia já está pronta. Assim que a outra faixa for anexada ela aparecerá aqui automaticamente.')
+            : 'Sua letra aprovada já pode ser produzida manualmente. Assim que as faixas forem anexadas, as prévias aparecerão aqui automaticamente.'}
         </p>
       </div>
 
@@ -194,8 +195,8 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
             <>
               {hasV1 && hasV2 && (
                 <div className="flex gap-3 bg-natural-sage-light p-1 border border-natural-border rounded-xl">
-                  <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 01</button>
-                  <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 02</button>
+                  <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versão 01</button>
+                  <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versão 02</button>
                 </div>
               )}
 
@@ -206,7 +207,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
                   </div>
                 </div>
                 <span className="text-xs uppercase tracking-widest text-natural-subtext font-bold mt-6">
-                  REPRODUZINDO PREVIA {activeVersion === 'v1' ? 'V1' : 'V2'} (ATE 1 MINUTO)
+                  REPRODUZINDO PRÉVIA {activeVersion === 'v1' ? 'V1' : 'V2'} (ATÉ 1 MINUTO)
                 </span>
               </div>
 
@@ -240,7 +241,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
                 <div>
                   <p className="text-sm font-semibold text-natural-dark">Aguardando anexar as duas faixas</p>
                   <p className="text-sm text-natural-subtext mt-1">
-                    Sua letra aprovada ja esta pronta. Nossa equipe vai produzir a musica manualmente e anexar as faixas neste pedido.
+                    Sua letra aprovada já está pronta. Nossa equipe vai produzir a música manualmente e anexar as faixas neste pedido.
                   </p>
                 </div>
               </div>
@@ -253,7 +254,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
           <div className="p-4 bg-natural-sage-light rounded-xl flex items-start gap-2 border border-natural-border">
             <AlertCircle className="w-4 h-4 text-natural-sage shrink-0 mt-0.5" />
             <p className="text-[11px] text-natural-text leading-normal font-light">
-              <strong>Nota:</strong> As previas tem no maximo 1 minuto. O download completo so e liberado apos confirmacao manual do pagamento.
+              <strong>Nota:</strong> As prévias têm no máximo 1 minuto. O download completo só é liberado após confirmação manual do pagamento.
             </p>
           </div>
         </div>
@@ -261,13 +262,12 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
         <div className="lg:col-span-5 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs flex flex-col justify-between h-full">
           <div>
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-natural-subtext mb-4 border-b border-natural-border pb-3">
-              <CreditCard className="w-4 h-4 text-natural-sage" /> Pagamento e Liberacao Manual
+              <CreditCard className="w-4 h-4 text-natural-sage" /> Pagamento e Liberação Manual
             </div>
             <div className="mb-6">
-              <span className="text-natural-subtext font-light text-xs uppercase block tracking-wider">Adesao Promocional</span>
+              <span className="text-natural-subtext font-light text-xs uppercase block tracking-wider">Adesão Promocional</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-4xl font-extrabold font-display text-natural-dark tracking-tight">R$ 97,90</span>
-                <span className="text-xs text-natural-subtext font-light line-through">R$ 180,00</span>
+                <span className="text-4xl font-extrabold font-display text-natural-dark tracking-tight">R$ 19,99</span>
               </div>
             </div>
 
@@ -282,13 +282,13 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
               <div className="text-center">
                 <h4 className="text-xs font-bold text-natural-dark uppercase tracking-widest">Envie o comprovante pelo WhatsApp</h4>
                 <p className="text-[10px] text-natural-subtext font-light mt-1">
-                  O pagamento e a liberacao das faixas completas sao confirmados manualmente.
+                  O pagamento e a liberação das faixas completas são confirmados manualmente.
                 </p>
               </div>
             </div>
 
             <button type="button" onClick={handleCopyPix} className="w-full py-3 px-4 bg-natural-sage-light text-natural-dark text-xs font-semibold rounded-xl flex items-center justify-center gap-2 border border-natural-border cursor-pointer">
-              {copied ? <><Check className="w-4 h-4 text-natural-sage" /> Codigo Copiado!</> : <><Copy className="w-4 h-4 text-natural-subtext" /> Copiar Codigo PIX</>}
+              {copied ? <><Check className="w-4 h-4 text-natural-sage" /> Código Copiado!</> : <><Copy className="w-4 h-4 text-natural-subtext" /> Copiar Código PIX</>}
             </button>
 
             <label className="block mt-3">
@@ -314,7 +314,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
 
             {pedido.comprovante_nome_arquivo && (
               <p className="mt-2 text-[11px] text-natural-subtext">
-                Ultimo comprovante enviado: {pedido.comprovante_nome_arquivo}
+                Último comprovante enviado: {pedido.comprovante_nome_arquivo}
               </p>
             )}
 
@@ -338,30 +338,28 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
               </div>
             )}
 
-            {hasPreviews && whatsAppLink && (
-              <button type="button" onClick={openWhatsApp} className="w-full mt-3 py-3 px-4 bg-[#1F7A4D] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 cursor-pointer">
-                <MessageCircle className="w-4 h-4" /> Enviar comprovante no WhatsApp
-              </button>
-            )}
-
-            {hasPreviews && (whatsAppLink || whatsAppNumber || whatsAppError) && (
-              <div className="mt-3 rounded-2xl border border-natural-border bg-[#FAF8F5] px-4 py-3 text-[11px] text-natural-subtext leading-relaxed">
-                {whatsAppLink && <p>Se a aba do WhatsApp nao abrir ou for fechada, toque no botao novamente ou use o link manual abaixo para enviar o comprovante.</p>}
-                {whatsAppLink && (
-                  <a href={whatsAppLink} target="_blank" rel="noreferrer" className="inline-flex mt-2 text-natural-sage underline font-semibold">
-                    Abrir conversa no WhatsApp
-                  </a>
+            {(whatsAppLink || whatsAppError) && (
+              <div className="mt-4 pt-4 border-t border-natural-border">
+                <button
+                  type="button"
+                  onClick={openWhatsApp}
+                  disabled={!whatsAppLink}
+                  className="w-full py-3 px-4 bg-[#25D366] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4" /> Enviar pelo WhatsApp
+                </button>
+                {whatsAppNumber && (
+                  <p className="mt-2 text-[11px] text-natural-subtext text-center">
+                    Atendimento: {formatWhatsAppNumber(whatsAppNumber)}
+                  </p>
                 )}
-                {whatsAppNumber && <p className="mt-2">Numero do estudio: {formatWhatsAppNumber(whatsAppNumber)}</p>}
-                {whatsAppError && <p>{whatsAppError}</p>}
+                {whatsAppError && (
+                  <p className="mt-2 text-[11px] text-red-700 text-center">
+                    {whatsAppError}
+                  </p>
+                )}
               </div>
             )}
-          </div>
-
-          <div className="border-t border-natural-border pt-5 mt-6 space-y-3">
-            <button type="button" onClick={() => onReload()} className="w-full py-3.5 px-4 bg-natural-sage text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer">
-              <RefreshCw className="w-4 h-4" /> Verificar se ja foi liberado
-            </button>
           </div>
         </div>
       </div>

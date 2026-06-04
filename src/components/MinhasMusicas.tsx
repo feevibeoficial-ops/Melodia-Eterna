@@ -30,7 +30,7 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
       .catch(() => undefined);
   }, []);
 
-  const getThemeTitle = (id: string) => themes.find((theme) => theme.id === id)?.titulo || 'Musica Personalizada';
+  const getThemeTitle = (id: string) => themes.find((theme) => theme.id === id)?.titulo || 'Música Personalizada';
   const getThemeEmoji = (id: string) => themes.find((theme) => theme.id === id)?.emoji || '🎵';
 
   async function handleSearch() {
@@ -51,7 +51,7 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
       if (!response.ok) throw new Error(data.error || 'Erro ao buscar pedidos.');
       setOrders(data);
     } catch (err: any) {
-      alert(err.message || 'Erro de conexao com o servidor.');
+      alert(err.message || 'Erro de conexão com o servidor.');
     } finally {
       setLoading(false);
     }
@@ -59,26 +59,26 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
 
   function getStatus(order: PedidoMusica) {
     if (order.status_pagamento === 'PAGO') return 'Pronto / Baixar';
-    if (order.url_local_servidor || order.url_local_servidor_2) return 'Previa Disponivel';
-    if (order.letra_aprovada) return 'Em Producao';
-    return 'Aguardando Aprovacao';
+    if (order.url_local_servidor || order.url_local_servidor_2) return 'Prévia Disponível';
+    if (order.letra_aprovada) return 'Em Produção';
+    return 'Aguardando Aprovação';
   }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 bg-white border border-natural-border rounded-3xl shadow-xs">
       <div className="flex justify-between items-center mb-8 border-b border-natural-border pb-4">
         <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold text-natural-subtext hover:text-natural-dark transition-colors uppercase tracking-wider cursor-pointer">
-          <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao Inicio
+          <ArrowLeft className="w-3.5 h-3.5" /> Voltar ao Início
         </button>
-        <span className="text-xs font-semibold text-natural-subtext uppercase tracking-widest pl-1">Localizar Minhas Musicas</span>
+        <span className="text-xs font-semibold text-natural-subtext uppercase tracking-widest pl-1">Localizar Minhas Músicas</span>
       </div>
 
       <div className="space-y-6">
         <div>
           <Search className="w-8 h-8 text-natural-sage mb-2" />
-          <h2 className="text-2xl font-bold font-display text-natural-dark leading-tight">Consultar Historico</h2>
+          <h2 className="text-2xl font-bold font-display text-natural-dark leading-tight">Consultar Histórico</h2>
           <p className="text-sm text-natural-subtext font-light mt-1 pl-0.5">
-            Insira os dados informados no pedido para localizar sua letra, suas previas e a liberacao final.
+            Insira os dados informados no pedido para localizar sua letra, suas prévias e a liberação final.
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
         </div>
 
         <button type="button" onClick={handleSearch} disabled={loading} className="w-full py-3.5 px-5 bg-natural-sage hover:bg-natural-sage/90 text-white text-xs font-bold uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer">
-          {loading ? 'Pesquisando...' : 'Localizar Minhas Musicas'}
+          {loading ? 'Pesquisando...' : 'Localizar Minhas Músicas'}
         </button>
       </div>
 

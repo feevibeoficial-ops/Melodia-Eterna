@@ -27,7 +27,7 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
           transition={{ duration: 0.5, delay: 0.1 }}
           className="text-4xl md:text-5xl font-bold font-display tracking-tight text-natural-dark mb-4"
         >
-          Transforme Sua Historia em Uma <span className="text-natural-sage font-display italic">Musica Real</span>
+          Transforme Sua História em Uma <span className="text-natural-sage font-display italic">Música Real</span>
         </motion.h1>
 
         <motion.p
@@ -36,7 +36,7 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
           transition={{ duration: 0.5, delay: 0.2 }}
           className="text-natural-subtext max-w-xl mx-auto text-base md:text-lg font-light leading-relaxed"
         >
-          Escreva ou conte sua historia para que nossos compositores criem uma letra unica e nossos produtores transformem tudo em uma musica inesquecivel.
+          Escreva ou conte sua história para que nossos compositores criem uma letra única e nossos produtores transformem tudo em uma música inesquecível.
         </motion.p>
       </div>
 
@@ -47,12 +47,12 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
           className="flex items-center gap-2 px-6 py-3 bg-white hover:bg-natural-sage-light text-natural-dark font-medium rounded-xl border border-natural-border shadow-xs transition-all text-sm w-full sm:w-auto justify-center cursor-pointer"
         >
           <Search className="w-4 h-4 text-natural-sage" />
-          Minhas Musicas Anteriores
+          Minhas Músicas Anteriores
         </button>
       </div>
 
       <h2 className="text-sm font-semibold tracking-wider text-natural-subtext text-center uppercase mb-6 font-sans">
-        Escolha um Tema para Comecar
+        Escolha um Tema para Começar
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -80,7 +80,7 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
             </div>
 
             <div className="relative z-10 flex items-center justify-between text-xs font-semibold text-natural-dark border-t border-natural-border pt-4 group-hover:text-natural-sage transition-colors">
-              <span>Criar composicao</span>
+              <span>Criar composição</span>
               <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
             </div>
           </motion.div>
