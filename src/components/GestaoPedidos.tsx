@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, CheckCircle2, LoaderCircle, Lock, Music2, RefreshCw, Send } from 'lucide-react';
-import { PedidoMusica } from '../types';
+import { ArrowLeft, CheckCircle2, LoaderCircle, Lock, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
+import { DEFAULT_TEMAS, PedidoMusica, PromptTemplate, TemaConfig, TemaId, TemaPergunta } from '../types';
 
 interface GestaoPedidosProps {
   onBack: () => void;
@@ -24,6 +24,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Drafts>({});
+  const [promptTemplates, setPromptTemplates] = useState<Record<string, PromptTemplate>>({});
+  const [themes, setThemes] = useState<TemaConfig[]>(DEFAULT_TEMAS);
+  const [promptBusyId, setPromptBusyId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
   async function loadOrders() {
@@ -61,9 +64,39 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         }
         return next;
       });
+      await loadThemes();
+      await loadPromptTemplates();
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadThemes() {
+    const response = await fetch('/api/admin/themes', {
+      headers: { 'x-admin-password': password },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Falha ao carregar os modelos de musica.');
+    }
+    setThemes(data as TemaConfig[]);
+  }
+
+  async function loadPromptTemplates() {
+    const response = await fetch('/api/admin/prompt-templates', {
+      headers: { 'x-admin-password': password },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Falha ao carregar os prompts.');
+    }
+
+    setPromptTemplates(
+      (data as PromptTemplate[]).reduce<Record<string, PromptTemplate>>((acc, template) => {
+        acc[template.temaId] = template;
+        return acc;
+      }, {}),
+    );
   }
 
   useEffect(() => {
@@ -86,6 +119,33 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         fileName2: current[orderId]?.fileName2 || '',
         ...patch,
       },
+    }));
+  }
+
+  function setPromptDraft(temaId: TemaId, patch: Partial<PromptTemplate>) {
+    setPromptTemplates((current) => ({
+      ...current,
+      [temaId]: {
+        temaId,
+        composeTemplate: current[temaId]?.composeTemplate || '',
+        refineTemplate: current[temaId]?.refineTemplate || '',
+        updatedAt: current[temaId]?.updatedAt || new Date().toISOString(),
+        ...patch,
+      },
+    }));
+  }
+
+  function setThemeDraft(themeId: string, patch: Partial<TemaConfig>) {
+    setThemes((current) => current.map((theme) => theme.id === themeId ? { ...theme, ...patch } : theme));
+  }
+
+  function setThemeQuestionDraft(themeId: string, questionId: string, patch: Partial<TemaPergunta>) {
+    setThemes((current) => current.map((theme) => {
+      if (theme.id !== themeId) return theme;
+      return {
+        ...theme,
+        perguntas: theme.perguntas.map((question) => question.id === questionId ? { ...question, ...patch } : question),
+      };
     }));
   }
 
@@ -221,6 +281,160 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     }
   }
 
+  async function savePromptTemplate(temaId: TemaId) {
+    const template = promptTemplates[temaId];
+    if (!template) return;
+
+    setPromptBusyId(temaId);
+    setPageError(null);
+    try {
+      const response = await fetch(`/api/admin/prompt-templates/${temaId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': password,
+        },
+        body: JSON.stringify(template),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao salvar prompt.');
+      setPromptTemplates((current) => ({
+        ...current,
+        [temaId]: data as PromptTemplate,
+      }));
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao salvar prompt.');
+    } finally {
+      setPromptBusyId(null);
+    }
+  }
+
+  async function saveTheme(theme: TemaConfig) {
+    setPromptBusyId(theme.id);
+    setPageError(null);
+    try {
+      const response = await fetch(`/api/admin/themes/${theme.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': password,
+        },
+        body: JSON.stringify(theme),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao salvar modelo.');
+      setThemes((current) => current.map((item) => item.id === theme.id ? data as TemaConfig : item));
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao salvar modelo.');
+    } finally {
+      setPromptBusyId(null);
+    }
+  }
+
+  async function createTheme() {
+    const timestamp = Date.now().toString(36);
+    const theme: TemaConfig = {
+      id: `novo_tema_${timestamp}`,
+      titulo: 'Novo tema',
+      descricao: 'Descreva este modelo musical.',
+      emoji: '🎵',
+      bgColor: 'from-stone-200/40 to-stone-300/20',
+      color: 'stone',
+      sortOrder: themes.length,
+      isActive: true,
+      perguntas: [
+        {
+          id: 'p1',
+          label: 'Nova pergunta',
+          p_placeholder: 'Digite um exemplo de resposta',
+          description: '',
+          sortOrder: 0,
+          isRequired: true,
+          isActive: true,
+        },
+      ],
+    };
+
+    setPromptBusyId(theme.id);
+    setPageError(null);
+    try {
+      const response = await fetch('/api/admin/themes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': password,
+        },
+        body: JSON.stringify(theme),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao criar modelo.');
+      setThemes((current) => [...current, data as TemaConfig]);
+      setPromptTemplates((current) => ({
+        ...current,
+        [theme.id]: {
+          temaId: theme.id,
+          composeTemplate: current.romantica?.composeTemplate || '',
+          refineTemplate: current.romantica?.refineTemplate || '',
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao criar modelo.');
+    } finally {
+      setPromptBusyId(null);
+    }
+  }
+
+  async function removeTheme(themeId: string) {
+    setPromptBusyId(themeId);
+    setPageError(null);
+    try {
+      const response = await fetch(`/api/admin/themes/${themeId}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': password },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao excluir modelo.');
+      setThemes((current) => current.filter((item) => item.id !== themeId));
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao excluir modelo.');
+    } finally {
+      setPromptBusyId(null);
+    }
+  }
+
+  function addQuestion(themeId: string) {
+    setThemes((current) => current.map((theme) => {
+      if (theme.id !== themeId) return theme;
+      const nextIndex = theme.perguntas.length + 1;
+      return {
+        ...theme,
+        perguntas: [
+          ...theme.perguntas,
+          {
+            id: `p${nextIndex}`,
+            label: `Pergunta ${nextIndex}`,
+            p_placeholder: 'Digite um exemplo de resposta',
+            description: '',
+            sortOrder: nextIndex - 1,
+            isRequired: true,
+            isActive: true,
+          },
+        ],
+      };
+    }));
+  }
+
+  function removeQuestion(themeId: string, questionId: string) {
+    setThemes((current) => current.map((theme) => {
+      if (theme.id !== themeId) return theme;
+      return {
+        ...theme,
+        perguntas: theme.perguntas.filter((question) => question.id !== questionId),
+      };
+    }));
+  }
+
   if (!authenticated) {
     return (
       <div className="max-w-md mx-auto px-4 py-8">
@@ -267,6 +481,125 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         <p className="text-sm text-natural-subtext mt-1">
           Anexe as duas musicas, registre as URLs de referencia e marque o pagamento manualmente quando receber o comprovante.
         </p>
+      </div>
+
+      <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de musica e perguntas</h3>
+            <p className="text-sm text-natural-subtext mt-1">
+              Cadastre novos modelos, ajuste tema, texto e questionario sem alterar o codigo.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => createTheme().catch(console.error)}
+            className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Novo modelo
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {themes.map((theme) => {
+            const saving = promptBusyId === theme.id;
+            return (
+              <div key={theme.id} className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4 space-y-4">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <input value={theme.id} onChange={(e) => setThemeDraft(theme.id, { id: e.target.value })} placeholder="ID do modelo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="Titulo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="Descricao" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
+                  <input value={theme.emoji} onChange={(e) => setThemeDraft(theme.id, { emoji: e.target.value })} placeholder="Emoji" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.color} onChange={(e) => setThemeDraft(theme.id, { color: e.target.value })} placeholder="Cor" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.bgColor} onChange={(e) => setThemeDraft(theme.id, { bgColor: e.target.value })} placeholder="Gradiente/Background" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-natural-dark">Perguntas</p>
+                    <button type="button" onClick={() => addQuestion(theme.id)} className="px-3 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold cursor-pointer">Adicionar pergunta</button>
+                  </div>
+                  {theme.perguntas.map((question) => (
+                    <div key={question.id} className="grid md:grid-cols-2 gap-3 rounded-2xl border border-natural-border bg-white p-3">
+                      <input value={question.id} onChange={(e) => setThemeQuestionDraft(theme.id, question.id, { id: e.target.value })} placeholder="ID pergunta" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                      <input value={question.label} onChange={(e) => setThemeQuestionDraft(theme.id, question.id, { label: e.target.value })} placeholder="Texto da pergunta" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                      <input value={question.p_placeholder} onChange={(e) => setThemeQuestionDraft(theme.id, question.id, { p_placeholder: e.target.value })} placeholder="Placeholder" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm md:col-span-2" />
+                      <div className="md:col-span-2 flex justify-end">
+                        <button type="button" onClick={() => removeQuestion(theme.id, question.id)} className="px-3 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold text-[#9A5B33] flex items-center gap-2 cursor-pointer">
+                          <Trash2 className="w-3.5 h-3.5" /> Remover pergunta
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button type="button" disabled={saving} onClick={() => saveTheme(theme)} className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                    <Save className="w-3.5 h-3.5" /> Salvar modelo
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => removeTheme(theme.id)} className="px-4 py-2 bg-white border border-natural-border rounded-xl text-xs font-bold text-[#9A5B33] flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                    <Trash2 className="w-3.5 h-3.5" /> Excluir modelo
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
+        <div>
+          <h3 className="text-2xl font-bold font-display text-natural-dark">Prompts por tema</h3>
+          <p className="text-sm text-natural-subtext mt-1">
+            Edite o prompt de geracao e o prompt de refino separadamente para cada tipo de musica. Esses templates passam a ser lidos do Supabase.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {themes.map((tema) => {
+            const prompt = promptTemplates[tema.id];
+            const saving = promptBusyId === tema.id;
+
+            return (
+              <div key={tema.id} className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-natural-dark">{tema.titulo}</p>
+                    <p className="text-[11px] text-natural-subtext">ID: {tema.id}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving || !prompt}
+                    onClick={() => savePromptTemplate(tema.id)}
+                    className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Salvar prompt
+                  </button>
+                </div>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de geracao</span>
+                  <textarea
+                    value={prompt?.composeTemplate || ''}
+                    onChange={(e) => setPromptDraft(tema.id, { composeTemplate: e.target.value })}
+                    rows={10}
+                    className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-mono"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de refino</span>
+                  <textarea
+                    value={prompt?.refineTemplate || ''}
+                    onChange={(e) => setPromptDraft(tema.id, { refineTemplate: e.target.value })}
+                    rows={8}
+                    className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-mono"
+                  />
+                </label>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {pageError && (

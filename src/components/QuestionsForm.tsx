@@ -14,7 +14,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
   const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Perguntas Tema, 2: Preferências, 3: Contato
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    theme.perguntas.forEach((q) => {
+    theme.perguntas.filter((q) => q.isActive !== false).forEach((q) => {
       initial[q.id] = initialAnswers?.[q.id] || '';
     });
     return initial;
@@ -117,8 +117,9 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
 
   // Validation routines
   const isThemeQuestionsValid = () => {
-    // Return true if all questions have answers
-    return theme.perguntas.every((q) => answers[q.id] && answers[q.id].trim().length > 3);
+    return theme.perguntas
+      .filter((q) => q.isActive !== false && q.isRequired !== false)
+      .every((q) => answers[q.id] && answers[q.id].trim().length > 3);
   };
 
   const isContactValid = () => {
@@ -201,7 +202,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
             <div>
               <div className="text-3xl mb-1">{theme.emoji}</div>
               <h2 className="text-2xl font-bold font-display text-natural-dark leading-tight">
-                Conte-nos sobre essa história {theme.titulo === 'Romântica' ? 'de Amor' : `de ${theme.titulo}`}
+                Conte-nos sobre essa história {theme.id === 'romantica' ? 'de Amor' : `de ${theme.titulo}`}
               </h2>
               <p className="text-sm text-natural-subtext mt-1">
                 Suas lembranças e detalhes darão alma, verdade e rimas únicas à canção.
@@ -209,11 +210,11 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
             </div>
 
             <div className="space-y-5">
-              {theme.perguntas.map((q) => (
+              {theme.perguntas.filter((q) => q.isActive !== false).map((q) => (
                 <div key={q.id} className="space-y-2">
                   <label className="text-sm font-semibold text-natural-dark flex justify-between items-center">
                     <span>{q.label}</span>
-                    <span className="text-xs text-natural-caramel font-light font-sans">* obrigatório</span>
+                    {q.isRequired !== false && <span className="text-xs text-natural-caramel font-light font-sans">* obrigatório</span>}
                   </label>
                   
                   <div className="relative">

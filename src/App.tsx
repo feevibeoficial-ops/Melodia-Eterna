@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Music, PenTool, RefreshCw, AlertCircle, Settings } from 'lucide-react';
 
-import { TemaConfig, RespostasFormulario, PedidoMusica } from './types';
+import { TemaConfig, RespostasFormulario, PedidoMusica, DEFAULT_TEMAS } from './types';
 import ThemeSelector from './components/ThemeSelector';
 import QuestionsForm from './components/QuestionsForm';
 import LyricsReview from './components/LyricsReview';
@@ -17,6 +17,7 @@ type AppView = 'inicial' | 'search' | 'admin' | 'form' | 'loading-lyrics' | 'rev
 export default function App() {
   const [view, setView] = useState<AppView>('inicial');
   const [selectedTheme, setSelectedTheme] = useState<TemaConfig | null>(null);
+  const [themes, setThemes] = useState<TemaConfig[]>(DEFAULT_TEMAS);
   const [currentPedido, setCurrentPedido] = useState<PedidoMusica | null>(null);
   const [uiError, setUiError] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
@@ -37,6 +38,25 @@ export default function App() {
     }
     setLoadingLogIndex(0);
   }, [view]);
+
+  useEffect(() => {
+    fetch('/api/config/themes')
+      .then(async (response) => {
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Falha ao carregar temas.');
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length) {
+          setThemes(data as TemaConfig[]);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  }, []);
 
   const handleSelectTheme = (theme: TemaConfig) => {
     setUiError(null);
@@ -192,7 +212,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           {view === 'inicial' && (
             <motion.div key="inicial" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
-              <ThemeSelector onSelectTheme={handleSelectTheme} onGoToSearch={() => setView('search')} />
+              <ThemeSelector themes={themes} onSelectTheme={handleSelectTheme} onGoToSearch={() => setView('search')} />
             </motion.div>
           )}
 

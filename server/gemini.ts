@@ -1,5 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
-import type { RespostasFormulario } from '../src/types.js';
+import type { PedidoAiInteraction, RespostasFormulario } from '../src/types.js';
+import { buildComposePrompt, buildRefinePrompt } from './prompt-config.js';
+
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 class GeminiServiceError extends Error {
   statusCode: number;
@@ -67,7 +70,7 @@ async function generateLyricsContent(prompt: string, temperature: number): Promi
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const response = await client.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GEMINI_MODEL,
         contents: prompt,
         config: { temperature },
       });
@@ -91,110 +94,72 @@ async function generateLyricsContent(prompt: string, temperature: number): Promi
   throw new GeminiServiceError('Falha temporaria ao gerar a composicao.', 503);
 }
 
-function makeCompositionPrompt(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
-  let themeDetail = '';
+function buildAiInteractionBase(kind: 'compose' | 'refine', prompt: string, output: string, temperature: number): Omit<PedidoAiInteraction, 'id' | 'createdAt'> {
+  return {
+    kind,
+    model: GEMINI_MODEL,
+    temperature,
+    prompt,
+    output,
+  };
+}
 
-  if (resp.temaId === 'romantica') {
-    themeDetail = `Esta e uma musica romantica em primeira pessoa.
-Nome do casal: ${resp.respostas.p1}
-Data de inicio/casamento: ${resp.respostas.p2}
-Como se conheceram: ${resp.respostas.p3}
-Qualidades que mais apaixonam: ${resp.respostas.p4}
-Momentos inesqueciveis: ${resp.respostas.p5}
-Apelidos/piadas/manias: ${resp.respostas.p6}`;
-  } else if (resp.temaId === 'mae') {
-    themeDetail = `Esta e uma musica de homenagem de filho(a) para sua mae.
-Nome/apelido carinhoso dela: ${resp.respostas.p1}
-Ensinamentos, conselhos e frases classicas dela: ${resp.respostas.p2}
-Maior licao de resiliencia, amor ou sacrificio dela: ${resp.respostas.p3}
-Lembranca doce de infancia ou cheiro/comida do lar: ${resp.respostas.p4}
-O que deseja agradecer e declarar: ${resp.respostas.p5}`;
-  } else if (resp.temaId === 'pai') {
-    themeDetail = `Esta e uma musica de homenagem para seu pai.
-Nome/como a familia o chama: ${resp.respostas.p1}
-Passatempo favorito ou mania engracada: ${resp.respostas.p2}
-Conselho mais marcante ou conversa valiosa: ${resp.respostas.p3}
-Historia de protecao, parceria ou orgulho: ${resp.respostas.p4}
-3 palavras fundamentais que o definem: ${resp.respostas.p5}`;
-  } else if (resp.temaId === 'filho') {
-    themeDetail = `Esta e uma musica de homenagem de pai, mae ou responsavel para um filho ou filha.
-Nome/apelido carinhoso: ${resp.respostas.p1}
-Chegada na vida e inicio dessa historia: ${resp.respostas.p2}
-Qualidades e atitudes que enchem o coracao de orgulho: ${resp.respostas.p3}
-Momento inesquecivel vivido juntos: ${resp.respostas.p4}
-Sonhos, desejos e mensagens para o futuro: ${resp.respostas.p5}
-Apelidos, brincadeiras, manias ou detalhes especiais: ${resp.respostas.p6}`;
-  } else if (resp.temaId === 'debutante') {
-    themeDetail = `Esta e uma musica de homenagem para debutante de 15 anos.
-Nome da debutante e data especial: ${resp.respostas.p1}
-Como os pais descrevem a transicao dela/orgulhos: ${resp.respostas.p2}
-Hobbies e preferencias (danca, make, redes, etc): ${resp.respostas.p3}
-Sonhos e planos para o futuro: ${resp.respostas.p4}
-Fato fofo ou engracado da infancia: ${resp.respostas.p5}`;
-  } else if (resp.temaId === 'amizade') {
-    themeDetail = `Esta e uma musica sobre amizade verdadeira para celebrar nosso grupo de amigos.
-Nomes envolvidos: ${resp.respostas.p1}
-Como e ha quanto tempo comecou, de onde se conhecem: ${resp.respostas.p2}
-Viagens, roles, loucuras compartilhadas: ${resp.respostas.p3}
-Situacao marcante de uniao, apoio ou perrengue superado: ${resp.respostas.p4}
-Piadas de grupo, manias e expressoes internas de voces: ${resp.respostas.p5}`;
-  } else if (resp.temaId === 'revelacao') {
-    const namesAns = resp.respostas.p5 || '';
-    let boyName = 'Teo';
-    const girlName = 'Livia';
+export async function composeLyricsWithMetadata(
+  respostas: RespostasFormulario,
+  selectedGenderForRevelacao?: 'menino' | 'menina',
+): Promise<{ lyrics: string; interaction: Omit<PedidoAiInteraction, 'id' | 'createdAt'> }> {
+  const prompt = await buildComposePrompt(respostas, selectedGenderForRevelacao);
+  const temperature = 0.8;
 
-    if (namesAns.toLowerCase().includes('menino')) {
-      const parts = namesAns.split(/menino/i);
-      const boyPart = parts[1] ? parts[1].split(/[,\sE\s]/i)[0] : '';
-      if (boyPart.trim().length > 1) {
-        boyName = boyPart.trim().replace(/[^\wA-Za-zÀ-ÿ]/g, '');
-      }
-    }
-
-    const babyName = selectedGenderForRevelacao === 'menina' ? girlName : boyName;
-
-    themeDetail = `Esta e uma musica emocionante para um cha revelacao de bebe.
-Nome dos pais: ${resp.respostas.p1}
-Descoberta da gravidez e a doce ansiedade: ${resp.respostas.p2}
-Palpites da familia: ${resp.respostas.p3}
-Mensagem de amor de que ja o(a) amam muito: ${resp.respostas.p4}
-SEXO REVELADO NO CHA: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}
-NOME ESCOLHIDO DO BEBE: "${babyName}"
-
-REGRA ABSOLUTA:
-Voce deve compor a letra de modo que a revelacao do nome "${babyName}" aconteca exatamente na ultima palavra de toda a letra.
-Nao use o nome do bebe em nenhum outro lugar da musica.`;
+  try {
+    const lyrics = await generateLyricsContent(prompt, temperature);
+    return {
+      lyrics,
+      interaction: {
+        ...buildAiInteractionBase('compose', prompt, lyrics, temperature),
+        feedbackUsuario: null,
+        selectedGenderForRevelacao: selectedGenderForRevelacao ?? null,
+      },
+    };
+  } catch (error: any) {
+    throw normalizeGeminiError(error, 'Falha ao compor a letra neste momento.');
   }
-
-  return `Voce e um compositor musical senior com extrema sensibilidade poetica.
-Sua missao e criar a letra de uma musica altamente emocionante e personalizada com base nas seguintes respostas reais fornecidas pelo cliente:
-
-${themeDetail}
-
-Estilo musical desejado: ${resp.estiloMusical}
-Voz preferida: ${resp.provVoice}
-
-DIRETRIZES OBRIGATORIAS:
-1. Escreva em primeira pessoa, representando o sentimento do cliente.
-2. Nao use marcacoes estruturais como "[Verso]", "[Refrao]", "Verso 1", "Ponte" ou similares.
-3. Garanta alta carga emocional, com rimas naturais e ritmo envolvente adaptado ao genero "${resp.estiloMusical}".
-4. Integre memorias, piadas internas, apelidos e fatos de forma poetica, sem despejar as respostas cruas.
-5. A composicao deve ter duracao sugerida de cerca de 4 minutos, com 4 a 6 estrofes e refrões emocionantes.
-${resp.temaId === 'revelacao' ? `6. O nome "${selectedGenderForRevelacao === 'menina' ? 'Livia' : 'Teo'}" deve ser estritamente a ultima palavra da cancao.` : ''}
-
-Escreva apenas a letra da musica, de forma direta e limpa, sem titulos, observacoes ou assinaturas.`;
 }
 
 export async function composeLyrics(
   respostas: RespostasFormulario,
   selectedGenderForRevelacao?: 'menino' | 'menina',
 ): Promise<string> {
-  const prompt = makeCompositionPrompt(respostas, selectedGenderForRevelacao);
+  const result = await composeLyricsWithMetadata(respostas, selectedGenderForRevelacao);
+  return result.lyrics;
+}
+
+export async function refineLyricsWithMetadata(
+  respostas: RespostasFormulario,
+  letraAnterior: string,
+  feedbackUsuario: string,
+  selectedGenderForRevelacao?: 'menino' | 'menina',
+): Promise<{ lyrics: string; interaction: Omit<PedidoAiInteraction, 'id' | 'createdAt'> }> {
+  const prompt = await buildRefinePrompt(
+    respostas,
+    letraAnterior,
+    feedbackUsuario,
+    selectedGenderForRevelacao,
+  );
+  const temperature = 0.7;
 
   try {
-    return await generateLyricsContent(prompt, 0.8);
+    const lyrics = await generateLyricsContent(prompt, temperature);
+    return {
+      lyrics,
+      interaction: {
+        ...buildAiInteractionBase('refine', prompt, lyrics, temperature),
+        feedbackUsuario,
+        selectedGenderForRevelacao: selectedGenderForRevelacao ?? null,
+      },
+    };
   } catch (error: any) {
-    throw normalizeGeminiError(error, 'Falha ao compor a letra neste momento.');
+    throw normalizeGeminiError(error, 'Falha ao refinar a composicao neste momento.');
   }
 }
 
@@ -204,30 +169,8 @@ export async function refineLyrics(
   feedbackUsuario: string,
   selectedGenderForRevelacao?: 'menino' | 'menina',
 ): Promise<string> {
-  const prompt = `Voce e o mesmo compositor senior. Voce ja compos uma musica personalizada.
-O cliente gostaria de ajustar trechos com base no seguinte feedback:
-
-FEEDBACK DO USUARIO: "${feedbackUsuario}"
-
-LETRA ATUAL:
-"""
-${letraAnterior}
-"""
-
-DIRETRIZES:
-1. Reescreva apenas o necessario para atender ao feedback, preservando o que ja funciona.
-2. Mantenha a historia e as rimas conectadas de forma natural.
-3. Nao use marcacoes como "[Verso]" ou "[Refrao]".
-4. Mantenha o estilo em primeira pessoa.
-${respostas.temaId === 'revelacao' ? `5. O nome "${selectedGenderForRevelacao === 'menina' ? 'Livia' : 'Teo'}" deve continuar sendo a ultima palavra da cancao.` : ''}
-
-Escreva apenas a nova letra, sem explicar alteracoes.`;
-
-  try {
-    return await generateLyricsContent(prompt, 0.7);
-  } catch (error: any) {
-    throw normalizeGeminiError(error, 'Falha ao refinar a composicao neste momento.');
-  }
+  const result = await refineLyricsWithMetadata(respostas, letraAnterior, feedbackUsuario, selectedGenderForRevelacao);
+  return result.lyrics;
 }
 
 function cleanLyrics(text: string): string {

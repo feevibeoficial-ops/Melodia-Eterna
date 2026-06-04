@@ -1,13 +1,14 @@
 import { motion } from 'motion/react';
-import { TEMAS, TemaConfig } from '../types';
+import { TemaConfig } from '../types';
 import { ArrowRight, Music, Search } from 'lucide-react';
 
 interface ThemeSelectorProps {
+  themes: TemaConfig[];
   onSelectTheme: (theme: TemaConfig) => void;
   onGoToSearch: () => void;
 }
 
-export default function ThemeSelector({ onSelectTheme, onGoToSearch }: ThemeSelectorProps) {
+export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: ThemeSelectorProps) {
   return (
     <div id="theme-selector-root" className="max-w-4xl mx-auto px-4 py-8">
       <div className="text-center mb-12">
@@ -55,7 +56,7 @@ export default function ThemeSelector({ onSelectTheme, onGoToSearch }: ThemeSele
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {TEMAS.map((theme, idx) => (
+        {themes.map((theme, idx) => (
           <motion.div
             key={theme.id}
             initial={{ opacity: 0, y: 15 }}

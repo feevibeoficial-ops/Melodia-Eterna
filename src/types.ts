@@ -2,9 +2,19 @@
  * Types and interfaces for Melodia Eterna
  */
 
-export type TemaId = 'romantica' | 'mae' | 'pai' | 'filho' | 'debutante' | 'amizade' | 'revelacao';
+export type TemaId = string;
 export type StatusPagamento = 'PENDENTE' | 'PAGO';
 export type StatusProducao = 'AGUARDANDO_APROVACAO' | 'LETRA_APROVADA' | 'AGUARDANDO_FAIXAS' | 'PREVIAS_PRONTAS' | 'LIBERADO';
+
+export interface TemaPergunta {
+  id: string;
+  label: string;
+  p_placeholder: string;
+  description?: string;
+  sortOrder?: number;
+  isRequired?: boolean;
+  isActive?: boolean;
+}
 
 export interface TemaConfig {
   id: TemaId;
@@ -13,12 +23,9 @@ export interface TemaConfig {
   emoji: string;
   bgColor: string;
   color: string;
-  perguntas: {
-    id: string;
-    label: string;
-    p_placeholder: string;
-    description?: string;
-  }[];
+  sortOrder?: number;
+  isActive?: boolean;
+  perguntas: TemaPergunta[];
 }
 
 export interface PesquisaRequisito {
@@ -33,6 +40,25 @@ export interface RespostasFormulario {
   provVoice: string;
   clienteEmail: string;
   clienteWhatsapp: string;
+}
+
+export interface PedidoAiInteraction {
+  id: string;
+  kind: 'compose' | 'refine';
+  createdAt: string;
+  model: string;
+  temperature: number;
+  prompt: string;
+  output: string;
+  feedbackUsuario?: string | null;
+  selectedGenderForRevelacao?: 'menino' | 'menina' | null;
+}
+
+export interface PromptTemplate {
+  temaId: TemaId;
+  composeTemplate: string;
+  refineTemplate: string;
+  updatedAt: string;
 }
 
 export interface PedidoMusica {
@@ -59,9 +85,10 @@ export interface PedidoMusica {
   comprovante_url_local: string | null;
   comprovante_nome_arquivo: string | null;
   data_expiracao_local: string | null;
+  ai_interactions: PedidoAiInteraction[];
 }
 
-export const TEMAS: TemaConfig[] = [
+export const DEFAULT_TEMAS: TemaConfig[] = [
   {
     id: 'romantica',
     titulo: 'Romantica',

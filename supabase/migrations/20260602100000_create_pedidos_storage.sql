@@ -5,15 +5,31 @@ create table if not exists public.pedidos (
   data jsonb not null
 );
 
+create table if not exists public.prompt_templates (
+  tema_id text primary key,
+  compose_template text not null,
+  refine_template text not null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create index if not exists pedidos_created_at_idx on public.pedidos (created_at desc);
 create index if not exists pedidos_cliente_email_idx on public.pedidos ((lower(data->>'cliente_email')));
 create index if not exists pedidos_cliente_whatsapp_idx on public.pedidos ((data->>'cliente_whatsapp'));
 
 alter table public.pedidos enable row level security;
+alter table public.prompt_templates enable row level security;
 
 drop policy if exists "pedidos_service_role_all" on public.pedidos;
 create policy "pedidos_service_role_all"
 on public.pedidos
+for all
+to service_role
+using (true)
+with check (true);
+
+drop policy if exists "prompt_templates_service_role_all" on public.prompt_templates;
+create policy "prompt_templates_service_role_all"
+on public.prompt_templates
 for all
 to service_role
 using (true)

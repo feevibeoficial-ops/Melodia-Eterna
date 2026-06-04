@@ -8,11 +8,13 @@ import { createServer as createViteServer } from 'vite';
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-import type { RespostasFormulario, PedidoMusica } from '../src/types.js';
+import type { RespostasFormulario, PedidoMusica, PromptTemplate, TemaConfig } from '../src/types.js';
 import { savePedido, getPedido, listPedidosByContact, listAllPedidos } from '../server/db.js';
-import { composeLyrics, refineLyrics } from '../server/gemini.js';
+import { composeLyricsWithMetadata, refineLyricsWithMetadata } from '../server/gemini.js';
 import { attachAudioSlotToPedido, attachManualAudioToPedido, clearPedidoAudio, getAudioFile, saveUploadedTempFile } from '../server/audio.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../server/supabase.js';
+import { listPromptTemplates, savePromptTemplate } from '../server/prompt-config.js';
+import { deleteTheme, listThemes, upsertTheme } from '../server/theme-config.js';
 
 const DATA_DIR = isSupabaseConfigured() ? path.join(os.tmpdir(), 'melodia-eterna') : path.join(process.cwd(), 'data');
 const TELEGRAM_STATE_PATH = path.join(DATA_DIR, 'telegram-state.json');
@@ -102,6 +104,10 @@ async function getProofFile(pedidoId: string, fileName: string) {
 
 function makePixCode(id: string) {
   return `00020101021226850014br.gov.bcb.pix2563pix.melodiaeterna.com.br/qr/v2/${id}${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+}
+
+function createInteractionId() {
+  return `ai_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function getWhatsAppNumber() {
@@ -663,6 +669,15 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     });
   });
 
+  app.get('/api/config/themes', async (_req, res) => {
+    try {
+      res.json(await listThemes());
+    } catch (error: any) {
+      console.error('Erro ao listar temas:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao carregar temas.' });
+    }
+  });
+
   app.get('/api/telegram/webhook', (_req, res) => {
     res.status(400).json({
       error: 'Webhook do Telegram requer um segredo na URL e aceita apenas POST.',
@@ -716,7 +731,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         return;
       }
 
-      const letra = await composeLyrics(responses, selectedGenderForRevelacao);
+      const generation = await composeLyricsWithMetadata(responses, selectedGenderForRevelacao);
       const pedidoId = `MEL-${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
 
       const novoPedido: PedidoMusica = {
@@ -726,7 +741,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         cliente_email: responses.clienteEmail,
         cliente_whatsapp: responses.clienteWhatsapp,
         respostas: responses,
-        letra_gerada: letra,
+        letra_gerada: generation.lyrics,
         letra_aprovada: null,
         termo_aceite_assinado: false,
         termo_aceite_timestamp: null,
@@ -743,6 +758,13 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         comprovante_url_local: null,
         comprovante_nome_arquivo: null,
         data_expiracao_local: null,
+        ai_interactions: [
+          {
+            id: createInteractionId(),
+            createdAt: new Date().toISOString(),
+            ...generation.interaction,
+          },
+        ],
       };
 
       await savePedido(novoPedido);
@@ -771,15 +793,23 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         return;
       }
 
-      const letraRefinada = await refineLyrics(
+      const refined = await refineLyricsWithMetadata(
         pedido.respostas,
         pedido.letra_gerada,
         feedback,
         selectedGenderForRevelacao,
       );
 
-      pedido.letra_gerada = letraRefinada;
+      pedido.letra_gerada = refined.lyrics;
       pedido.updatedAt = new Date().toISOString();
+      pedido.ai_interactions = [
+        ...(pedido.ai_interactions || []),
+        {
+          id: createInteractionId(),
+          createdAt: new Date().toISOString(),
+          ...refined.interaction,
+        },
+      ];
       await savePedido(pedido);
       res.json(pedido);
     } catch (error: any) {
@@ -980,6 +1010,76 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     } catch (error: any) {
       console.error('Erro ao listar pedidos na gestao:', error);
       res.status(500).json({ error: error?.message || 'Falha ao listar pedidos.' });
+    }
+  });
+
+  app.get('/api/admin/themes', requireAdmin, async (_req, res) => {
+    try {
+      res.json(await listThemes());
+    } catch (error: any) {
+      console.error('Erro ao listar temas na gestao:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao listar temas.' });
+    }
+  });
+
+  app.post('/api/admin/themes', requireAdmin, async (req, res) => {
+    try {
+      const theme = req.body as TemaConfig;
+      res.json(await upsertTheme(theme));
+    } catch (error: any) {
+      console.error('Erro ao criar tema:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao criar tema.' });
+    }
+  });
+
+  app.put('/api/admin/themes/:id', requireAdmin, async (req, res) => {
+    try {
+      const theme = req.body as TemaConfig;
+      res.json(await upsertTheme({ ...theme, id: req.params.id }));
+    } catch (error: any) {
+      console.error('Erro ao salvar tema:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao salvar tema.' });
+    }
+  });
+
+  app.delete('/api/admin/themes/:id', requireAdmin, async (req, res) => {
+    try {
+      await deleteTheme(req.params.id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error('Erro ao excluir tema:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao excluir tema.' });
+    }
+  });
+
+  app.get('/api/admin/prompt-templates', requireAdmin, async (_req, res) => {
+    try {
+      res.json(await listPromptTemplates());
+    } catch (error: any) {
+      console.error('Erro ao listar templates de prompt:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao listar templates de prompt.' });
+    }
+  });
+
+  app.put('/api/admin/prompt-templates/:temaId', requireAdmin, async (req, res) => {
+    try {
+      const payload = req.body as Partial<PromptTemplate>;
+      if (!payload.composeTemplate || !payload.refineTemplate) {
+        res.status(400).json({ error: 'ComposeTemplate e refineTemplate sao obrigatorios.' });
+        return;
+      }
+
+      const saved = await savePromptTemplate({
+        temaId: req.params.temaId as PromptTemplate['temaId'],
+        composeTemplate: payload.composeTemplate,
+        refineTemplate: payload.refineTemplate,
+        updatedAt: new Date().toISOString(),
+      });
+
+      res.json(saved);
+    } catch (error: any) {
+      console.error('Erro ao salvar template de prompt:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao salvar template de prompt.' });
     }
   });
 

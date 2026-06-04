@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, Mail, Phone, ArrowLeft, ArrowRight, Calendar, AlertCircle } from 'lucide-react';
-import { PedidoMusica } from '../types';
+import { DEFAULT_TEMAS, PedidoMusica, TemaConfig } from '../types';
 
 interface MinhasMusicasProps {
   onBack: () => void;
@@ -14,26 +14,24 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
   const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<PedidoMusica[]>([]);
   const [searched, setSearched] = useState(false);
+  const [themes, setThemes] = useState<TemaConfig[]>(DEFAULT_TEMAS);
 
-  const getThemeTitle = (id: string) => ({
-    romantica: 'Musica Romantica',
-    mae: 'Homenagem a Mae',
-    pai: 'Homenagem ao Pai',
-    filho: 'Homenagem ao Filho(a)',
-    debutante: 'Aniversario 15 Anos',
-    amizade: 'Amizade de Ouro',
-    revelacao: 'Cha Revelacao',
-  }[id] || 'Musica Personalizada');
+  useEffect(() => {
+    fetch('/api/config/themes')
+      .then(async (response) => {
+        if (!response.ok) return [];
+        return response.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data) && data.length) {
+          setThemes(data as TemaConfig[]);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
-  const getThemeEmoji = (id: string) => ({
-    romantica: '💖',
-    mae: '🌸',
-    pai: '👔',
-    filho: '🧸',
-    debutante: '👑',
-    amizade: '🍻',
-    revelacao: '🍼',
-  }[id] || '🎵');
+  const getThemeTitle = (id: string) => themes.find((theme) => theme.id === id)?.titulo || 'Musica Personalizada';
+  const getThemeEmoji = (id: string) => themes.find((theme) => theme.id === id)?.emoji || '🎵';
 
   async function handleSearch() {
     if (!email.trim() && !phone.trim()) {
