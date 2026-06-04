@@ -111,7 +111,7 @@ Piadas de grupo, manias e expressoes internas de voces: ${resp.respostas.p5}`;
     const parts = namesAns.split(/menino/i);
     const boyPart = parts[1] ? parts[1].split(/[,\sE\s]/i)[0] : '';
     if (boyPart.trim().length > 1) {
-      boyName = boyPart.trim().replace(/[^\wA-Za-zÃ€-Ã¿]/g, '');
+      boyName = boyPart.trim().replace(/[^\p{L}\p{N}_-]/gu, '');
     }
   }
 
