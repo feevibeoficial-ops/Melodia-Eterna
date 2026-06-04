@@ -11,6 +11,7 @@ import PlayerPagamento from './components/PlayerPagamento';
 import EntregaSucesso from './components/EntregaSucesso';
 import MinhasMusicas from './components/MinhasMusicas';
 import GestaoPedidos from './components/GestaoPedidos';
+import { BRANDING } from './branding';
 
 type AppView = 'inicial' | 'search' | 'admin' | 'form' | 'loading-lyrics' | 'review' | 'termo' | 'player-pagamento' | 'sucesso';
 
@@ -163,14 +164,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-natural-light flex flex-col justify-between">
-      <header className="border-b border-natural-border bg-white/85 backdrop-blur-md sticky top-0 z-50 py-4.5 px-6 select-none shadow-3xs">
+    <div
+      className="min-h-screen flex flex-col justify-between bg-natural-light bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `linear-gradient(rgba(253, 251, 247, 0.94), rgba(253, 251, 247, 0.96)), url(${BRANDING.background})` }}
+    >
+      <header className="border-b border-natural-border bg-white/72 backdrop-blur-md sticky top-0 z-50 py-4.5 px-6 select-none shadow-3xs">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div onClick={handleRestart} className="flex items-center gap-2 cursor-pointer hover:opacity-85 transition-opacity">
-            <span className="w-8 h-8 rounded-full bg-natural-sage flex items-center justify-center p-1 text-white font-bold shadow-3xs font-display">M</span>
-            <span className="font-extrabold text-lg tracking-tight text-natural-dark font-display">
-              Melodia<span className="text-natural-sage">Eterna</span>
-            </span>
+            <img src={BRANDING.logo} alt="Melodia Eterna" className="h-10 w-auto object-contain drop-shadow-xs" />
           </div>
 
           <div className="flex items-center gap-3">

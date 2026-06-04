@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.ts": {
+    "api/app-server.ts": {
       "maxDuration": 60
     }
   },
@@ -13,11 +13,11 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "/api/index"
+      "destination": "/api/app-server"
     },
     {
       "source": "/audio/:path*",
-      "destination": "/api/index"
+      "destination": "/api/app-server"
     },
     {
       "source": "/((?!assets/|favicon.ico).*)",

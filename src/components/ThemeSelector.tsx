@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { TemaConfig } from '../types';
 import { ArrowRight, Music, Search } from 'lucide-react';
+import { BRANDING } from '../branding';
 
 interface ThemeSelectorProps {
   themes: TemaConfig[];
@@ -10,13 +11,21 @@ interface ThemeSelectorProps {
 
 export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: ThemeSelectorProps) {
   return (
-    <div id="theme-selector-root" className="max-w-4xl mx-auto px-4 py-8">
+    <div id="theme-selector-root" className="max-w-5xl mx-auto px-4 py-8">
       <div className="text-center mb-12">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mb-6"
+        >
+          <img src={BRANDING.logo} alt="Melodia Eterna" className="h-18 md:h-24 w-auto mx-auto object-contain drop-shadow-md" />
+        </motion.div>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2 px-3 py-1 bg-natural-sage/10 text-natural-sage rounded-full text-xs font-semibold mb-3 tracking-wide uppercase"
+          className="inline-flex items-center gap-2 px-3 py-1 bg-white/80 text-natural-sage rounded-full text-xs font-semibold mb-3 tracking-wide uppercase border border-natural-border shadow-xs"
         >
           <Music className="w-3.5 h-3.5" /> Melodia Eterna
         </motion.div>
@@ -63,7 +72,7 @@ export default function ThemeSelector({ themes, onSelectTheme, onGoToSearch }: T
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: idx * 0.05 }}
             onClick={() => onSelectTheme(theme)}
-            className="group relative bg-white p-6 rounded-2xl border border-natural-border shadow-xs hover:shadow-md hover:border-natural-sage cursor-pointer overflow-hidden transition-all flex flex-col justify-between"
+            className="group relative bg-white/88 backdrop-blur-[2px] p-6 rounded-2xl border border-natural-border shadow-xs hover:shadow-md hover:border-natural-sage cursor-pointer overflow-hidden transition-all flex flex-col justify-between"
           >
             <div className="absolute inset-0 bg-natural-sage-light opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 

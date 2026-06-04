@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import dotenv from 'dotenv';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -1290,6 +1291,26 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   }
 
   return app;
+}
+
+let vercelAppPromise: Promise<express.Express> | null = null;
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    if (!vercelAppPromise) {
+      vercelAppPromise = createApp({ serveFrontend: false });
+    }
+
+    const app = await vercelAppPromise;
+    return app(req, res);
+  } catch (error: any) {
+    console.error('Falha ao inicializar API da Vercel:', error);
+    res.status(500).json({
+      error: 'Falha ao inicializar API da Vercel.',
+      message: error?.message || 'Erro desconhecido.',
+      stack: process.env.NODE_ENV !== 'production' ? error?.stack || null : null,
+    });
+  }
 }
 
 async function startServer() {
