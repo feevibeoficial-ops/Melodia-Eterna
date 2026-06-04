@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, CheckCircle2, LoaderCircle, Lock, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, LoaderCircle, Lock, Mail, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
 import { DEFAULT_TEMAS, PedidoMusica, PromptTemplate, TemaConfig, TemaId, TemaPergunta } from '../types';
+import { getAdminAccessToken, getAdminSession, getAdminSupabaseClient } from '../lib/admin-auth';
 
 interface GestaoPedidosProps {
   onBack: () => void;
@@ -19,7 +20,10 @@ type Drafts = Record<string, {
 }>;
 
 export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
-  const [password, setPassword] = useState(() => localStorage.getItem('melodia_admin_password') || '');
+  const [email, setEmail] = useState('ewerton.bezerra.silva@gmail.com');
+  const [password, setPassword] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [orders, setOrders] = useState<PedidoMusica[]>([]);
@@ -31,6 +35,14 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
   const [promptBusyId, setPromptBusyId] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<GestaoTab>('pedidos');
+  const [adminEmail, setAdminEmail] = useState('');
+
+  async function authHeaders() {
+    const accessToken = await getAdminAccessToken();
+    return {
+      Authorization: `Bearer ${accessToken}`,
+    };
+  }
 
   async function loadOrders() {
     setLoading(true);
@@ -39,19 +51,17 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
 
     try {
       const response = await fetch('/api/admin/orders', {
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) {
         if (response.status === 401) {
           setAuthenticated(false);
-          localStorage.removeItem('melodia_admin_password');
         }
         throw new Error(data.error || 'Falha ao carregar os pedidos.');
       }
 
       setAuthenticated(true);
-      localStorage.setItem('melodia_admin_password', password);
       setOrders(data);
       setDrafts((current) => {
         const next = { ...current };
@@ -69,14 +79,26 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       });
       await loadThemes();
       await loadPromptTemplates();
+      await loadAdminSession();
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadAdminSession() {
+    const response = await fetch('/api/admin/session', {
+      headers: await authHeaders(),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setAdminEmail(data.user?.email || '');
+      setNewEmail(data.user?.email || '');
+    }
+  }
+
   async function loadThemes() {
     const response = await fetch('/api/admin/themes', {
-      headers: { 'x-admin-password': password },
+      headers: await authHeaders(),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -87,7 +109,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
 
   async function loadPromptTemplates() {
     const response = await fetch('/api/admin/prompt-templates', {
-      headers: { 'x-admin-password': password },
+      headers: await authHeaders(),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -103,11 +125,15 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
   }
 
   useEffect(() => {
-    if (!password) return;
-    loadOrders().catch((err) => {
-      setLoading(false);
-      setAuthError(err.message);
-    });
+    getAdminSession().then((session) => {
+      if (!session) return;
+      setAuthenticated(true);
+      setEmail(session.user.email || '');
+      loadOrders().catch((err) => {
+        setLoading(false);
+        setAuthError(err.message);
+      });
+    }).catch(() => undefined);
   }, []);
 
   function setDraft(orderId: string, patch: Partial<Drafts[string]>) {
@@ -154,10 +180,43 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
 
   async function login() {
     try {
+      const client = await getAdminSupabaseClient();
+      const { error } = await client.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       await loadOrders();
     } catch (err: any) {
-      setAuthError(err.message || 'Senha invalida.');
+      setAuthError(err.message || 'Falha ao entrar na gestao.');
     }
+  }
+
+  async function updateCredentials() {
+    setPromptBusyId('account');
+    setPageError(null);
+    try {
+      const client = await getAdminSupabaseClient();
+      const payload: { email?: string; password?: string } = {};
+      if (newEmail && newEmail !== adminEmail) payload.email = newEmail;
+      if (newPassword) payload.password = newPassword;
+      if (!payload.email && !payload.password) return;
+
+      const { error } = await client.auth.updateUser(payload);
+      if (error) throw error;
+      setPageError('Credenciais atualizadas. Se alterou o e-mail, confirme na caixa de entrada.');
+      setNewPassword('');
+      await loadAdminSession();
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao atualizar credenciais.');
+    } finally {
+      setPromptBusyId(null);
+    }
+  }
+
+  async function logout() {
+    const client = await getAdminSupabaseClient();
+    await client.auth.signOut();
+    setAuthenticated(false);
+    setOrders([]);
+    setAdminEmail('');
   }
 
   async function uploadFile(orderId: string, slot: 'v1' | 'v2', file: File) {
@@ -168,7 +227,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'x-admin-password': password,
+          ...(await authHeaders()),
           'x-file-name': encodeURIComponent(file.name),
         },
         body: await file.arrayBuffer(),
@@ -197,7 +256,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
+          ...(await authHeaders()),
         },
         body: JSON.stringify(draft),
       });
@@ -218,7 +277,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/mark-paid`, {
         method: 'POST',
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao marcar como pago.');
@@ -236,7 +295,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/mark-unpaid`, {
         method: 'POST',
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao voltar para nao pago.');
@@ -254,7 +313,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/reset-audio`, {
         method: 'POST',
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao limpar as faixas.');
@@ -272,7 +331,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     try {
       const response = await fetch(`/api/admin/orders/${orderId}/resend-telegram`, {
         method: 'POST',
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao reenviar a letra no Telegram.');
@@ -295,7 +354,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
+          ...(await authHeaders()),
         },
         body: JSON.stringify(template),
       });
@@ -320,7 +379,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
+          ...(await authHeaders()),
         },
         body: JSON.stringify(theme),
       });
@@ -365,7 +424,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
+          ...(await authHeaders()),
         },
         body: JSON.stringify(theme),
       });
@@ -394,7 +453,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     try {
       const response = await fetch(`/api/admin/themes/${themeId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': password },
+        headers: await authHeaders(),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao excluir modelo.');
@@ -450,8 +509,15 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
               <Lock className="w-6 h-6 text-natural-sage" />
             </div>
             <h2 className="text-2xl font-bold font-display text-natural-dark">Acesso a Gestao</h2>
-            <p className="text-sm text-natural-subtext mt-1">Informe a senha para abrir a area interna de pedidos.</p>
+            <p className="text-sm text-natural-subtext mt-1">Entre com seu e-mail e senha do Supabase Auth para abrir a area interna de pedidos.</p>
           </div>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-mail administrativo"
+            className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm"
+          />
           <input
             type="password"
             value={password}
@@ -474,9 +540,14 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-xs font-semibold text-natural-subtext uppercase tracking-wider cursor-pointer">
           <ArrowLeft className="w-3.5 h-3.5" /> Voltar
         </button>
-        <button type="button" onClick={() => loadOrders().catch(console.error)} className="flex items-center gap-2 px-4 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold text-natural-dark cursor-pointer">
-          <RefreshCw className="w-3.5 h-3.5" /> Atualizar pedidos
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => loadOrders().catch(console.error)} className="flex items-center gap-2 px-4 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold text-natural-dark cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Atualizar pedidos
+          </button>
+          <button type="button" onClick={() => logout().catch(console.error)} className="flex items-center gap-2 px-4 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold text-natural-dark cursor-pointer">
+            Sair
+          </button>
+        </div>
       </div>
 
       <div>
@@ -713,7 +784,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                     </div>
 
                     <div className="rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-[12px] text-[#9A5B33] leading-relaxed">
-                      Para gerar previa sem FFmpeg instalado no servidor, envie as faixas em <strong>WAV</strong>. Se enviar MP3, o servidor vai pedir FFmpeg.
+                      O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponivel, o fallback automatico continua funcionando apenas para <strong>WAV</strong>.
                     </div>
 
                     <div className="flex flex-wrap gap-3">
@@ -740,6 +811,31 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
           })}
         </div>
       ))}
+
+      <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-4">
+        <div>
+          <h3 className="text-2xl font-bold font-display text-natural-dark">Conta da Gestao</h3>
+          <p className="text-sm text-natural-subtext mt-1">Conta atual: {adminEmail || 'nao carregada'}</p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-xs font-semibold text-natural-subtext block mb-2">Novo e-mail</span>
+            <div className="relative">
+              <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-natural-subtext" />
+              <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+            </div>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold text-natural-subtext block mb-2">Nova senha</span>
+            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Preencha apenas se quiser trocar" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+          </label>
+        </div>
+        <div>
+          <button type="button" disabled={promptBusyId === 'account'} onClick={() => updateCredentials().catch(console.error)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+            <Save className="w-4 h-4" /> Atualizar conta
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

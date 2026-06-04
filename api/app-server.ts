@@ -635,19 +635,57 @@ function getAdminPassword(req: express.Request) {
   return req.header('x-admin-password') || '';
 }
 
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const configuredPassword = process.env.ADMIN_PASSWORD || '';
-  if (!configuredPassword) {
-    res.status(500).json({ error: 'ADMIN_PASSWORD nao configurada no servidor.' });
-    return;
+function getPublicSupabaseKey() {
+  return process.env.SUPABASE_PUBLISHABLE_KEY
+    || process.env.SUPABASE_ANON_KEY
+    || 'sb_publishable_QJALiUj_8T_LD-0HqbsSRA_SlJoI2Cl';
+}
+
+async function getAdminUserFromRequest(req: express.Request) {
+  const authHeader = req.header('authorization') || '';
+  const tokenMatch = /^Bearer\s+(.+)$/i.exec(authHeader);
+  if (!tokenMatch) {
+    return null;
   }
 
-  if (getAdminPassword(req) !== configuredPassword) {
-    res.status(401).json({ error: 'Senha da gestao invalida.' });
-    return;
+  const accessToken = tokenMatch[1];
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+  if (userError || !userData.user?.id || !userData.user.email) {
+    return null;
   }
 
-  next();
+  const { data: adminRow, error: adminError } = await supabase
+    .from('admin_users')
+    .select('user_id, email, is_active')
+    .eq('user_id', userData.user.id)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (adminError || !adminRow) {
+    return null;
+  }
+
+  return {
+    id: userData.user.id,
+    email: userData.user.email,
+  };
+}
+
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const adminUser = await getAdminUserFromRequest(req);
+    if (!adminUser) {
+      res.status(401).json({ error: 'Sessao da gestao invalida ou expirada.' });
+      return;
+    }
+
+    (req as express.Request & { adminUser?: { id: string; email: string } }).adminUser = adminUser;
+    next();
+  } catch (error: any) {
+    console.error('Erro ao validar sessao admin:', error);
+    res.status(500).json({ error: error?.message || 'Falha ao validar sessao da gestao.' });
+  }
 }
 
 export async function createApp(options: { serveFrontend?: boolean } = {}) {
@@ -662,10 +700,17 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       status: 'ok',
       time: new Date().toISOString(),
       config: {
-        adminPassword: Boolean(process.env.ADMIN_PASSWORD),
+        adminPassword: false,
         supabase: isSupabaseConfigured(),
         storageProvider: process.env.STORAGE_PROVIDER || 'local',
       },
+    });
+  });
+
+  app.get('/api/config/public', (_req, res) => {
+    res.json({
+      supabaseUrl: process.env.SUPABASE_URL || '',
+      supabasePublishableKey: getPublicSupabaseKey(),
     });
   });
 
@@ -1011,6 +1056,13 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       console.error('Erro ao listar pedidos na gestao:', error);
       res.status(500).json({ error: error?.message || 'Falha ao listar pedidos.' });
     }
+  });
+
+  app.get('/api/admin/session', requireAdmin, async (req, res) => {
+    const adminUser = (req as express.Request & { adminUser?: { id: string; email: string } }).adminUser;
+    res.json({
+      user: adminUser,
+    });
   });
 
   app.get('/api/admin/themes', requireAdmin, async (_req, res) => {
