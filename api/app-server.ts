@@ -599,10 +599,7 @@ async function handleTelegramSession(
           if (pedido) {
             pedido.url_local_servidor = attachedV1.previewUrl;
             pedido.url_referencia_externa_1 = attachedV1.referenceUrl;
-            const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
-            pedido.status_producao = hasBothPreviews
-              ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
-              : 'AGUARDANDO_FAIXAS';
+            pedido.status_producao = pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS';
             pedido.updatedAt = new Date().toISOString();
             await savePedido(pedido);
           }

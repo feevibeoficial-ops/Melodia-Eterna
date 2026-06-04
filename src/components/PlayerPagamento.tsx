@@ -10,9 +10,11 @@ interface PlayerPagamentoProps {
 }
 
 export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: PlayerPagamentoProps) {
-  const hasPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
+  const hasV1 = Boolean(pedido.url_local_servidor);
+  const hasV2 = Boolean(pedido.url_local_servidor_2);
+  const hasPreviews = hasV1 || hasV2;
   const [copied, setCopied] = useState(false);
-  const [activeVersion, setActiveVersion] = useState<'v1' | 'v2'>('v1');
+  const [activeVersion, setActiveVersion] = useState<'v1' | 'v2'>(hasV1 ? 'v1' : 'v2');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(60);
@@ -23,6 +25,10 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
   const [proofMessage, setProofMessage] = useState<string | null>(null);
   const [selectedProofFile, setSelectedProofFile] = useState<File | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    setActiveVersion(hasV1 ? 'v1' : 'v2');
+  }, [pedido.id, hasV1, hasV2]);
 
   useEffect(() => {
     if (pedido.status_pagamento === 'PAGO') {
@@ -186,10 +192,12 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
         <div className="lg:col-span-7 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs space-y-6">
           {hasPreviews ? (
             <>
-              <div className="flex gap-3 bg-natural-sage-light p-1 border border-natural-border rounded-xl">
-                <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 01</button>
-                <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 02</button>
-              </div>
+              {hasV1 && hasV2 && (
+                <div className="flex gap-3 bg-natural-sage-light p-1 border border-natural-border rounded-xl">
+                  <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 01</button>
+                  <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 02</button>
+                </div>
+              )}
 
               <div className="flex flex-col items-center py-6">
                 <div className="w-40 h-40 md:w-48 md:h-48 rounded-full bg-natural-dark flex items-center justify-center shadow-lg border-8 border-[#3A3A2F]">

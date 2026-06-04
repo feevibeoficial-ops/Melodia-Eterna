@@ -59,7 +59,7 @@ export default function MinhasMusicas({ onBack, onSelectPedido }: MinhasMusicasP
 
   function getStatus(order: PedidoMusica) {
     if (order.status_pagamento === 'PAGO') return 'Pronto / Baixar';
-    if (order.url_local_servidor && order.url_local_servidor_2) return 'Previa Disponivel';
+    if (order.url_local_servidor || order.url_local_servidor_2) return 'Previa Disponivel';
     if (order.letra_aprovada) return 'Em Producao';
     return 'Aguardando Aprovacao';
   }
