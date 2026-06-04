@@ -385,13 +385,38 @@ async function buildTelegramStatsMessage() {
   ].join('\n');
 }
 
+async function buildTelegramRecentProofsMessage() {
+  const pedidos = await listAllPedidos();
+  const recentProofs = pedidos
+    .filter((pedido) => Boolean(pedido.comprovante_nome_arquivo || pedido.comprovante_url_local))
+    .sort((a, b) => {
+      const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+      const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+      return dateB - dateA;
+    })
+    .slice(0, 10);
+
+  if (!recentProofs.length) {
+    return '<i>Nenhum pedido com comprovante enviado ate agora.</i>';
+  }
+
+  return [
+    '<b>Ultimos 10 pedidos com comprovante enviado:</b>',
+    ...recentProofs.map((pedido) => {
+      const tema = pedido.respostas.temaId || 'sem tema';
+      return `• <code>${escapeHtml(pedido.id)}</code> - ${escapeHtml(tema)} - ${escapeHtml(formatPedidoDate(pedido.updatedAt || pedido.createdAt))}`;
+    }),
+  ].join('\n');
+}
+
 function buildTelegramHelpMessage() {
   return [
     'Comandos do bot Melodia Eterna',
     '',
     '/resumo - resumo do sistema',
     '/help - mostra esta ajuda',
-    '/pago MEL-XXXX - aprova o pagamento do pedido',
+    '/pago - lista os comprovantes recentes e pede o ID para aprovar',
+    '/pago MEL-XXXX - aprova o pagamento do pedido diretamente',
     '/musica - adiciona musicas (V1 e V2) a um pedido',
     '/cancelar - cancela a operacao em andamento',
   ].join('\n');
@@ -447,7 +472,7 @@ async function downloadTelegramFile(fileId: string, fileName?: string) {
 }
 
 interface TelegramSession {
-  step: 'awaiting_pedido_id' | 'awaiting_v1_audio' | 'awaiting_v1_url' | 'awaiting_v2_audio' | 'awaiting_v2_url';
+  step: 'awaiting_pedido_id' | 'awaiting_paid_order_id' | 'awaiting_v1_audio' | 'awaiting_v1_url' | 'awaiting_v2_audio' | 'awaiting_v2_url';
   pedidoId?: string;
   tempPathV1?: string;
   fileNameV1?: string;
@@ -457,6 +482,23 @@ interface TelegramSession {
 }
 
 const telegramSessions = new Map<string | number, TelegramSession>();
+
+function isPedidoId(text: string | undefined) {
+  return Boolean(text && /^MEL-[A-Z0-9]+$/i.test(text.trim()));
+}
+
+function formatPedidoDate(value: string | null | undefined) {
+  if (!value) return 'sem data';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'sem data';
+  return parsed.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 function clearSessionFiles(session: TelegramSession) {
   if (session.tempPathV1 && fs.existsSync(session.tempPathV1)) {
@@ -502,13 +544,47 @@ async function handleTelegramSession(
   try {
     const text = message.text?.trim();
 
+    if (session.step === 'awaiting_paid_order_id') {
+      if (!text) {
+        await sendTelegramReply(chatId, 'Por favor, digite o ID do pedido (ex: MEL-XXXXX) ou envie /cancelar:');
+        return;
+      }
+
+      const pedidoId = text.toUpperCase();
+      if (!isPedidoId(pedidoId)) {
+        await sendTelegramReply(chatId, 'ID do pedido invalido. Por favor, envie no formato MEL-XXXXX ou envie /cancelar:');
+        return;
+      }
+
+      const pedido = await getPedido(pedidoId);
+      if (!pedido) {
+        await sendTelegramReply(chatId, `Pedido ${pedidoId} nao encontrado no sistema. Por favor, digite um ID valido ou envie /cancelar:`);
+        return;
+      }
+
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + 10);
+      pedido.status_pagamento = 'PAGO';
+      pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
+      pedido.data_expiracao_local = expDate.toISOString();
+      pedido.updatedAt = new Date().toISOString();
+      await savePedido(pedido);
+
+      telegramSessions.delete(chatId);
+      await sendTelegramReply(
+        chatId,
+        `Pagamento aprovado no pedido ${pedido.id}. O cliente ja pode acessar a liberacao conforme o status do pedido.`
+      );
+      return;
+    }
+
     if (session.step === 'awaiting_pedido_id') {
       if (!text) {
         await sendTelegramReply(chatId, 'Por favor, digite o ID do pedido (ex: MEL-XXXXX) ou envie /cancelar:');
         return;
       }
       const pedidoId = text.toUpperCase();
-      if (!/^MEL-[A-Z0-9]+$/i.test(pedidoId)) {
+      if (!isPedidoId(pedidoId)) {
         await sendTelegramReply(chatId, 'ID do pedido invalido. Por favor, envie no formato MEL-XXXXX ou envie /cancelar:');
         return;
       }
@@ -784,6 +860,25 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
     await sendTelegramReply(
       chatId,
       `Pagamento aprovado no pedido ${pedido.id}. O cliente ja pode acessar a liberacao conforme o status do pedido.`
+    );
+    return;
+  }
+
+  if (text === '/pago' || text === '/aprovar_pagamento') {
+    telegramSessions.set(chatId, { step: 'awaiting_paid_order_id' });
+
+    let recentProofsList = '';
+    try {
+      recentProofsList = await buildTelegramRecentProofsMessage();
+    } catch (error) {
+      console.error('Erro ao listar pedidos com comprovante para /pago:', error);
+      recentProofsList = '<i>Nao foi possivel carregar a lista de comprovantes recentes.</i>';
+    }
+
+    await sendTelegramReply(
+      chatId,
+      `💸 <b>Aprovar Pagamento</b>\n\n${recentProofsList}\n\nDigite o ID do pedido para aprovar o pagamento (ex: <code>MEL-LJSGQ0DTN</code>):\n\n💡 <i>Voce pode enviar /cancelar a qualquer momento para sair.</i>`,
+      'HTML'
     );
     return;
   }

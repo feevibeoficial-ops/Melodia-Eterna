@@ -146,6 +146,29 @@ function audioObjectPath(pedidoId: string, fileName: string) {
   return `${pedidoId}/${fileName}`;
 }
 
+function parseRequestedAudioFile(fileName: string) {
+  const parsed = path.parse(fileName);
+  const previaMatch = /^previa_(MEL-[A-Z0-9]+)_(v[12])$/i.exec(parsed.name);
+  if (previaMatch) {
+    return {
+      pedidoId: previaMatch[1].toUpperCase(),
+      version: previaMatch[2].toLowerCase() as 'v1' | 'v2',
+      prefix: 'previa' as const,
+    };
+  }
+
+  const fullMatch = /^(?:music_)?(MEL-[A-Z0-9]+)(?:_full)?_(v[12])$/i.exec(parsed.name);
+  if (fullMatch) {
+    return {
+      pedidoId: fullMatch[1].toUpperCase(),
+      version: fullMatch[2].toLowerCase() as 'v1' | 'v2',
+      prefix: 'music_full' as const,
+    };
+  }
+
+  return null;
+}
+
 async function uploadAudioObject(pedidoId: string, localPath: string, fileName: string) {
   const supabase = getSupabaseClient();
   const bytes = fs.readFileSync(localPath);
@@ -163,19 +186,33 @@ async function uploadAudioObject(pedidoId: string, localPath: string, fileName: 
 }
 
 async function downloadAudioObject(fileName: string) {
-  const parsed = path.parse(fileName);
-  const previaMatch = /^previa_(MEL-[A-Z0-9]+)_(v[12])$/i.exec(parsed.name);
-  const fullMatch = /^music_(MEL-[A-Z0-9]+)_full_(v[12])$/i.exec(parsed.name);
-  const match = previaMatch || fullMatch;
-  if (!match) return null;
+  const parsedRequest = parseRequestedAudioFile(fileName);
+  if (!parsedRequest) return null;
 
-  const pedidoId = match[1].toUpperCase();
-  const version = match[2].toLowerCase();
-  const storedName = previaMatch ? `previa_${version}${parsed.ext}` : `music_full_${version}${parsed.ext}`;
+  const parsed = path.parse(fileName);
+  let storedName = `${parsedRequest.prefix}_${parsedRequest.version}${parsed.ext}`;
+
+  if (!parsed.ext) {
+    const { data: listedFiles, error: listError } = await getSupabaseClient()
+      .storage
+      .from(AUDIO_BUCKET)
+      .list(parsedRequest.pedidoId);
+
+    if (listError) return null;
+
+    const matchedFile = (listedFiles || []).find((item) => {
+      const itemParsed = path.parse(item.name);
+      return itemParsed.name === `${parsedRequest.prefix}_${parsedRequest.version}`;
+    });
+
+    if (!matchedFile) return null;
+    storedName = matchedFile.name;
+  }
+
   const { data, error } = await getSupabaseClient()
     .storage
     .from(AUDIO_BUCKET)
-    .download(audioObjectPath(pedidoId, storedName));
+    .download(audioObjectPath(parsedRequest.pedidoId, storedName));
 
   if (error || !data) return null;
 
@@ -272,17 +309,9 @@ export async function attachAudioSlotToPedido(
 }
 
 export function getAudioFilePath(fileName: string): string | null {
-  const parsed = path.parse(fileName);
-  const name = parsed.name;
-
-  const previaMatch = /^previa_(MEL-[A-Z0-9]+)_(v[12])$/i.exec(name);
-  if (previaMatch) {
-    return resolvePedidoFilePath(previaMatch[1], 'previa', previaMatch[2] as 'v1' | 'v2');
-  }
-
-  const fullMatch = /^music_(MEL-[A-Z0-9]+)_full_(v[12])$/i.exec(name);
-  if (fullMatch) {
-    return resolvePedidoFilePath(fullMatch[1], 'music_full', fullMatch[2] as 'v1' | 'v2');
+  const parsedRequest = parseRequestedAudioFile(fileName);
+  if (parsedRequest) {
+    return resolvePedidoFilePath(parsedRequest.pedidoId, parsedRequest.prefix, parsedRequest.version);
   }
 
   const directPath = path.join(AUDIO_DIR, fileName);
