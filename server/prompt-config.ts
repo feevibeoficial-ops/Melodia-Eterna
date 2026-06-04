@@ -46,6 +46,46 @@ DIRETRIZES:
 
 Escreva apenas a nova letra, sem explicar alteracoes.`;
 
+const DEFAULT_REVELACAO_COMPOSE_TEMPLATE = `Voce e um compositor musical senior com extrema sensibilidade poetica.
+Sua missao e criar a letra de uma musica altamente emocionante e personalizada para um cha revelacao, com base nas respostas reais fornecidas pelo cliente.
+
+{{respostas_cliente}}
+
+Estilo musical desejado: {{estilo_musical}}
+Voz preferida: {{voz_preferida}}
+
+DIRETRIZES OBRIGATORIAS:
+1. Escreva em primeira pessoa, representando o sentimento do cliente.
+2. Nao use marcacoes estruturais como "[Verso]", "[Refrao]", "Verso 1", "Ponte" ou similares.
+3. Garanta alta carga emocional, delicadeza familiar e clima de expectativa amorosa.
+4. Conduza a narrativa de forma crescente, como se a musica estivesse caminhando para o grande momento da descoberta.
+5. O sexo revelado no cha e: "{{sexo_bebe_revelacao}}".
+6. O nome escolhido do bebe e: "{{nome_bebe_revelacao}}".
+7. O nome "{{nome_bebe_revelacao}}" deve aparecer exatamente uma unica vez, e precisa ser estritamente a ultima palavra de toda a cancao.
+8. Nao use o nome do bebe em nenhum outro trecho da letra.
+
+Escreva apenas a letra da musica, de forma direta e limpa, sem titulos, observacoes ou assinaturas.`;
+
+const DEFAULT_REVELACAO_REFINE_TEMPLATE = `Voce e o mesmo compositor senior. Voce ja compos uma musica personalizada para um cha revelacao.
+O cliente gostaria de ajustar trechos com base no seguinte feedback:
+
+FEEDBACK DO USUARIO: "{{feedback_usuario}}"
+
+LETRA ATUAL:
+"""
+{{letra_anterior}}
+"""
+
+DIRETRIZES:
+1. Reescreva apenas o necessario para atender ao feedback, preservando o que ja funciona.
+2. Mantenha a historia, a emocao e as rimas conectadas de forma natural.
+3. Nao use marcacoes como "[Verso]" ou "[Refrao]".
+4. Continue em primeira pessoa.
+5. O sexo revelado no cha continua sendo "{{sexo_bebe_revelacao}}".
+6. O nome "{{nome_bebe_revelacao}}" deve continuar sendo a ultima palavra da cancao e aparecer apenas nessa posicao final.
+
+Escreva apenas a nova letra, sem explicar alteracoes.`;
+
 function extractBabyName(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
   const namesAns = resp.respostas.p5 || '';
   const normalized = namesAns.replace(/\s+/g, ' ').trim();
@@ -66,8 +106,8 @@ function buildDefaultTemplates(): PromptTemplate[] {
   const now = new Date().toISOString();
   return getTemaIds().map((temaId) => ({
     temaId,
-    composeTemplate: DEFAULT_COMPOSE_TEMPLATE,
-    refineTemplate: DEFAULT_REFINE_TEMPLATE,
+    composeTemplate: temaId === 'revelacao' ? DEFAULT_REVELACAO_COMPOSE_TEMPLATE : DEFAULT_COMPOSE_TEMPLATE,
+    refineTemplate: temaId === 'revelacao' ? DEFAULT_REVELACAO_REFINE_TEMPLATE : DEFAULT_REFINE_TEMPLATE,
     updatedAt: now,
   }));
 }
@@ -176,11 +216,14 @@ export async function buildComposePrompt(resp: RespostasFormulario, selectedGend
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
   const babyName = extractBabyName(resp, selectedGenderForRevelacao);
+  const babyGender = selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino';
 
   return applyTemplate(promptTemplate?.composeTemplate || DEFAULT_COMPOSE_TEMPLATE, {
     respostas_cliente: await buildRespostasCliente(resp, selectedGenderForRevelacao),
     estilo_musical: resp.estiloMusical,
     voz_preferida: resp.provVoice,
+    nome_bebe_revelacao: babyName,
+    sexo_bebe_revelacao: babyGender,
     revelacao_regra: resp.temaId === 'revelacao'
       ? `6. O nome "${babyName}" deve ser estritamente a ultima palavra da cancao.`
       : '',
@@ -196,10 +239,13 @@ export async function buildRefinePrompt(
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
   const babyName = extractBabyName(resp, selectedGenderForRevelacao);
+  const babyGender = selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino';
 
   return applyTemplate(promptTemplate?.refineTemplate || DEFAULT_REFINE_TEMPLATE, {
     feedback_usuario: feedbackUsuario,
     letra_anterior: letraAnterior,
+    nome_bebe_revelacao: babyName,
+    sexo_bebe_revelacao: babyGender,
     revelacao_refine_regra: resp.temaId === 'revelacao'
       ? `5. O nome "${babyName}" deve continuar sendo a ultima palavra da cancao.`
       : '',

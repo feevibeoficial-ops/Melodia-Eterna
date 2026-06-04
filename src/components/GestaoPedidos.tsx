@@ -594,9 +594,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         </div>
 
         <div className="rounded-2xl border border-[#E8E2D9] bg-[#FAF8F5] px-4 py-3 text-xs text-natural-subtext leading-relaxed">
-          Placeholders disponiveis no prompt de geracao: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
+          Placeholders disponiveis no prompt de geracao: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
           <br />
-          No prompt de refino: <strong>{'{{feedback_usuario}}'}</strong>, <strong>{'{{letra_anterior}}'}</strong>, <strong>{'{{revelacao_refine_regra}}'}</strong>.
+          No prompt de refino: <strong>{'{{feedback_usuario}}'}</strong>, <strong>{'{{letra_anterior}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_refine_regra}}'}</strong>.
         </div>
 
         <div className="space-y-4">
