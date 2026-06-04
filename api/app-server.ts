@@ -475,6 +475,13 @@ function clearSessionFiles(session: TelegramSession) {
   }
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 async function sendTelegramReply(chatId: number | string, text: string, parseMode?: string) {
   try {
     await telegramApiRequest('sendMessage', {
@@ -602,12 +609,12 @@ async function handleTelegramSession(
 
           await sendTelegramReply(
             chatId,
-            `\u2705 *Musica V1 adicionada com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nA versao V2 foi pulada.`,
-            'Markdown'
+            `\u2705 <b>Musica V1 adicionada com sucesso!</b>\n\nPedido: <code>${escapeHtml(session.pedidoId!)}</code>\nPrevia V1: <code>${escapeHtml(attachedV1.previewUrl)}</code>\nReferencia V1: ${attachedV1.referenceUrl ? `<a href="${escapeHtml(attachedV1.referenceUrl)}">${escapeHtml(attachedV1.referenceUrl)}</a>` : 'Nenhuma'}\nA versao V2 foi pulada.`,
+            'HTML'
           );
         } catch (error: any) {
           console.error('Erro ao salvar V1:', error);
-          await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${error.message || error}`);
+          await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${escapeHtml(error.message || error)}`);
         } finally {
           clearSessionFiles(session);
           telegramSessions.delete(chatId);
@@ -617,7 +624,7 @@ async function handleTelegramSession(
 
       const media = message.document || message.audio;
       if (!media?.file_id) {
-        await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V2 ou digite *pular* para finalizar apenas com a V1:', 'Markdown');
+        await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V2 ou digite <b>pular</b> para finalizar apenas com a V1:', 'HTML');
         return;
       }
 
@@ -630,19 +637,19 @@ async function handleTelegramSession(
 
         await sendTelegramReply(
           chatId,
-          'Audio V2 recebido com sucesso!\n\nAgora, envie a *URL de referencia V2* (Suno, YouTube, etc) ou digite *pular*:',
-          'Markdown'
+          'Audio V2 recebido com sucesso!\n\nAgora, envie a <b>URL de referencia V2</b> (Suno, YouTube, etc) ou digite <b>pular</b>:',
+          'HTML'
         );
       } catch (error: any) {
         console.error('Erro ao baixar audio V2:', error);
-        await sendTelegramReply(chatId, `Erro ao baixar o arquivo V2: ${error?.message || error}. Tente novamente ou digite *pular*:`, 'Markdown');
+        await sendTelegramReply(chatId, `Erro ao baixar o arquivo V2: ${escapeHtml(error?.message || error)}. Tente novamente ou digite <b>pular</b>:`, 'HTML');
       }
       return;
     }
 
     if (session.step === 'awaiting_v2_url') {
       if (!text) {
-        await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V2 ou digite *pular*:', 'Markdown');
+        await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V2 ou digite <b>pular</b>:', 'HTML');
         return;
       }
 
@@ -652,7 +659,7 @@ async function handleTelegramSession(
         urlV2 = null;
       } else {
         if (!/^https?:\/\//i.test(text)) {
-          await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite *pular*:', 'Markdown');
+          await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite <b>pular</b>:', 'HTML');
           return;
         }
         urlV2 = text;
@@ -694,12 +701,12 @@ async function handleTelegramSession(
 
         await sendTelegramReply(
           chatId,
-          `\u2705 *Musicas V1 e V2 adicionadas com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nPrevia V2: ${attachedV2.previewUrl}\nReferencia V2: ${attachedV2.referenceUrl || 'Nenhuma'}`,
-          'Markdown'
+          `\u2705 <b>Musicas V1 e V2 adicionadas com sucesso!</b>\n\nPedido: <code>${escapeHtml(session.pedidoId!)}</code>\nPrevia V1: <code>${escapeHtml(attachedV1.previewUrl)}</code>\nReferencia V1: ${attachedV1.referenceUrl ? `<a href="${escapeHtml(attachedV1.referenceUrl)}">${escapeHtml(attachedV1.referenceUrl)}</a>` : 'Nenhuma'}\nPrevia V2: <code>${escapeHtml(attachedV2.previewUrl)}</code>\nReferencia V2: ${attachedV2.referenceUrl ? `<a href="${escapeHtml(attachedV2.referenceUrl)}">${escapeHtml(attachedV2.referenceUrl)}</a>` : 'Nenhuma'}`,
+          'HTML'
         );
       } catch (error: any) {
         console.error('Erro ao salvar V1 e V2:', error);
-        await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${error.message || error}`);
+        await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${escapeHtml(error.message || error)}`);
       } finally {
         clearSessionFiles(session);
         telegramSessions.delete(chatId);
@@ -709,7 +716,7 @@ async function handleTelegramSession(
   } catch (error: any) {
     console.error('Erro na sessao do Telegram:', error);
     try {
-      await sendTelegramReply(chatId, `\u274c Erro ao processar a operacao: ${error?.message || error}. A sessao foi cancelada.`);
+      await sendTelegramReply(chatId, `\u274c Erro ao processar a operacao: ${escapeHtml(error?.message || error)}. A sessao foi cancelada.`);
     } catch (replyError) {
       console.error('Erro ao notificar erro de sessao:', replyError);
     }
@@ -795,14 +802,14 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
         const lines = pending.slice(0, 15).map((p) => {
           const tema = p.respostas.temaId || 'sem tema';
           const estilo = p.respostas.estiloMusical || 'sem estilo';
-          return `\u2022 \`${p.id}\` - ${tema} (${estilo})`;
+          return `\u2022 <code>${escapeHtml(p.id)}</code> - ${escapeHtml(tema)} (${escapeHtml(estilo)})`;
         });
-        pendingList = '\n\n\ud83d\udccb *Pedidos aguardando faixas:*\n' + lines.join('\n');
+        pendingList = '\n\n\ud83d\udccb <b>Pedidos aguardando faixas:</b>\n' + lines.join('\n');
         if (pending.length > 15) {
-          pendingList += `\n_...e mais ${pending.length - 15} pedidos_`;
+          pendingList += `\n<i>...e mais ${pending.length - 15} pedidos</i>`;
         }
       } else {
-        pendingList = '\n\n_Nenhum pedido aguardando faixas no momento._';
+        pendingList = '\n\n<i>Nenhum pedido aguardando faixas no momento.</i>';
       }
     } catch (error) {
       console.error('Erro ao listar pedidos pendentes para /musica:', error);
@@ -810,8 +817,8 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
 
     await sendTelegramReply(
       chatId,
-      `\ud83c\udfb5 *Adicionar Musica ao Sistema*${pendingList}\n\nDigite o ID do pedido (ex: \`MEL-LJSGQ0DTN\`):\n\n\ud83d\udca1 _Voce pode enviar /cancelar a qualquer momento para sair._`,
-      'Markdown'
+      `\ud83c\udfb5 <b>Adicionar Musica ao Sistema</b>${pendingList}\n\nDigite o ID do pedido (ex: <code>MEL-LJSGQ0DTN</code>):\n\n\ud83d\udca1 <i>Voce pode enviar /cancelar a qualquer momento para sair.</i>`,
+      'HTML'
     );
     return;
   }
