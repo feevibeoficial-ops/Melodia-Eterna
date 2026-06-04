@@ -317,7 +317,7 @@ function parseTelegramAudioCommand(text: string | undefined) {
 function isTelegramStatsCommand(text: string | undefined) {
   if (!text) return false;
   const normalized = text.trim().toLowerCase();
-  return normalized === '/stats' || normalized === '/resumo';
+  return normalized === '/resumo';
 }
 
 function isTelegramHelpCommand(text: string | undefined) {
@@ -389,8 +389,7 @@ function buildTelegramHelpMessage() {
   return [
     'Comandos do bot Melodia Eterna',
     '',
-    '/stats - resumo do sistema',
-    '/resumo - mesmo resumo do sistema',
+    '/resumo - resumo do sistema',
     '/help - mostra esta ajuda',
     '/pago MEL-XXXX - aprova o pagamento do pedido',
     '/musica - fluxo guiado para adicionar musicas (V1 e V2) a um pedido',
@@ -500,92 +499,172 @@ async function handleTelegramSession(
   session: TelegramSession,
   message: NonNullable<TelegramUpdate['message']>
 ) {
-  const text = message.text?.trim();
+  try {
+    const text = message.text?.trim();
 
-  if (session.step === 'awaiting_pedido_id') {
-    if (!text) {
-      await sendTelegramReply(chatId, 'Por favor, digite o ID do pedido (ex: MEL-XXXXX) ou envie /cancelar:');
-      return;
-    }
-    const pedidoId = text.toUpperCase();
-    if (!/^MEL-[A-Z0-9]+$/i.test(pedidoId)) {
-      await sendTelegramReply(chatId, 'ID do pedido invalido. Por favor, envie no formato MEL-XXXXX ou envie /cancelar:');
-      return;
-    }
-
-    const pedido = await getPedido(pedidoId);
-    if (!pedido) {
-      await sendTelegramReply(chatId, `Pedido ${pedidoId} nao encontrado no sistema. Por favor, digite um ID valido ou envie /cancelar:`);
-      return;
-    }
-
-    session.pedidoId = pedidoId;
-    session.step = 'awaiting_v1_audio';
-    await sendTelegramReply(
-      chatId,
-      `Pedido ${pedidoId} localizado!\n\nAgora, por favor, envie o *arquivo de audio* (ou documento) para a previa da versao 1 (V1):`,
-      'Markdown'
-    );
-    return;
-  }
-
-  if (session.step === 'awaiting_v1_audio') {
-    const media = message.document || message.audio;
-    if (!media?.file_id) {
-      await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V1 ou envie /cancelar:');
-      return;
-    }
-
-    try {
-      await sendTelegramReply(chatId, 'Baixando arquivo da faixa V1...');
-      const tempPath = await downloadTelegramFile(media.file_id, media.file_name);
-      session.tempPathV1 = tempPath;
-      session.fileNameV1 = media.file_name;
-      session.step = 'awaiting_v1_url';
-
-      await sendTelegramReply(
-        chatId,
-        'Audio V1 recebido com sucesso!\n\nAgora, envie a *URL de referencia V1* (Suno, YouTube, etc) ou digite *pular*:',
-        'Markdown'
-      );
-    } catch (error: any) {
-      console.error('Erro ao baixar audio V1:', error);
-      await sendTelegramReply(chatId, `Erro ao baixar o arquivo: ${error?.message || error}. Por favor, tente enviar novamente ou envie /cancelar:`);
-    }
-    return;
-  }
-
-  if (session.step === 'awaiting_v1_url') {
-    if (!text) {
-      await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V1 ou digite *pular*:', 'Markdown');
-      return;
-    }
-
-    const lowerInput = text.toLowerCase();
-    if (lowerInput === 'pular' || lowerInput === 'pula') {
-      session.urlV1 = null;
-    } else {
-      if (!/^https?:\/\//i.test(text)) {
-        await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite *pular*:', 'Markdown');
+    if (session.step === 'awaiting_pedido_id') {
+      if (!text) {
+        await sendTelegramReply(chatId, 'Por favor, digite o ID do pedido (ex: MEL-XXXXX) ou envie /cancelar:');
         return;
       }
-      session.urlV1 = text;
+      const pedidoId = text.toUpperCase();
+      if (!/^MEL-[A-Z0-9]+$/i.test(pedidoId)) {
+        await sendTelegramReply(chatId, 'ID do pedido invalido. Por favor, envie no formato MEL-XXXXX ou envie /cancelar:');
+        return;
+      }
+
+      const pedido = await getPedido(pedidoId);
+      if (!pedido) {
+        await sendTelegramReply(chatId, `Pedido ${pedidoId} nao encontrado no sistema. Por favor, digite um ID valido ou envie /cancelar:`);
+        return;
+      }
+
+      session.pedidoId = pedidoId;
+      session.step = 'awaiting_v1_audio';
+      await sendTelegramReply(
+        chatId,
+        `Pedido ${pedidoId} localizado!\n\nAgora, por favor, envie o *arquivo de audio* (ou documento) para a previa da versao 1 (V1):`,
+        'Markdown'
+      );
+      return;
     }
 
-    session.step = 'awaiting_v2_audio';
-    await sendTelegramReply(
-      chatId,
-      'URL V1 configurada!\n\nAgora, envie o *arquivo de audio* para a previa da versao 2 (V2), ou digite *pular* para finalizar salvando apenas a V1:',
-      'Markdown'
-    );
-    return;
-  }
+    if (session.step === 'awaiting_v1_audio') {
+      const media = message.document || message.audio;
+      if (!media?.file_id) {
+        await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V1 ou envie /cancelar:');
+        return;
+      }
 
-  if (session.step === 'awaiting_v2_audio') {
-    const lowerInput = text?.toLowerCase();
-    if (lowerInput === 'pular' || lowerInput === 'pula') {
       try {
-        await sendTelegramReply(chatId, 'Salvando informacoes e gerando previa V1...');
+        await sendTelegramReply(chatId, 'Baixando arquivo da faixa V1...');
+        const tempPath = await downloadTelegramFile(media.file_id, media.file_name);
+        session.tempPathV1 = tempPath;
+        session.fileNameV1 = media.file_name;
+        session.step = 'awaiting_v1_url';
+
+        await sendTelegramReply(
+          chatId,
+          'Audio V1 recebido com sucesso!\n\nAgora, envie a *URL de referencia V1* (Suno, YouTube, etc) ou digite *pular*:',
+          'Markdown'
+        );
+      } catch (error: any) {
+        console.error('Erro ao baixar audio V1:', error);
+        await sendTelegramReply(chatId, `Erro ao baixar o arquivo: ${error?.message || error}. Por favor, tente enviar novamente ou envie /cancelar:`);
+      }
+      return;
+    }
+
+    if (session.step === 'awaiting_v1_url') {
+      if (!text) {
+        await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V1 ou digite *pular*:', 'Markdown');
+        return;
+      }
+
+      const lowerInput = text.toLowerCase();
+      if (lowerInput === 'pular' || lowerInput === 'pula') {
+        session.urlV1 = null;
+      } else {
+        if (!/^https?:\/\//i.test(text)) {
+          await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite *pular*:', 'Markdown');
+          return;
+        }
+        session.urlV1 = text;
+      }
+
+      session.step = 'awaiting_v2_audio';
+      await sendTelegramReply(
+        chatId,
+        'URL V1 configurada!\n\nAgora, envie o *arquivo de audio* para a previa da versao 2 (V2), ou digite *pular* para finalizar salvando apenas a V1:',
+        'Markdown'
+      );
+      return;
+    }
+
+    if (session.step === 'awaiting_v2_audio') {
+      const lowerInput = text?.toLowerCase();
+      if (lowerInput === 'pular' || lowerInput === 'pula') {
+        try {
+          await sendTelegramReply(chatId, 'Salvando informacoes e gerando previa V1...');
+          const attachedV1 = await attachAudioSlotToPedido(
+            session.pedidoId!,
+            'v1',
+            session.tempPathV1!,
+            session.urlV1 || undefined
+          );
+
+          const pedido = await getPedido(session.pedidoId!);
+          if (pedido) {
+            pedido.url_local_servidor = attachedV1.previewUrl;
+            pedido.url_referencia_externa_1 = attachedV1.referenceUrl;
+            const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
+            pedido.status_producao = hasBothPreviews
+              ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
+              : 'AGUARDANDO_FAIXAS';
+            pedido.updatedAt = new Date().toISOString();
+            await savePedido(pedido);
+          }
+
+          await sendTelegramReply(
+            chatId,
+            `\u2705 *Musica V1 adicionada com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nA versao V2 foi pulada.`,
+            'Markdown'
+          );
+        } catch (error: any) {
+          console.error('Erro ao salvar V1:', error);
+          await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${error.message || error}`);
+        } finally {
+          clearSessionFiles(session);
+          telegramSessions.delete(chatId);
+        }
+        return;
+      }
+
+      const media = message.document || message.audio;
+      if (!media?.file_id) {
+        await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V2 ou digite *pular* para finalizar apenas com a V1:', 'Markdown');
+        return;
+      }
+
+      try {
+        await sendTelegramReply(chatId, 'Baixando arquivo da faixa V2...');
+        const tempPath = await downloadTelegramFile(media.file_id, media.file_name);
+        session.tempPathV2 = tempPath;
+        session.fileNameV2 = media.file_name;
+        session.step = 'awaiting_v2_url';
+
+        await sendTelegramReply(
+          chatId,
+          'Audio V2 recebido com sucesso!\n\nAgora, envie a *URL de referencia V2* (Suno, YouTube, etc) ou digite *pular*:',
+          'Markdown'
+        );
+      } catch (error: any) {
+        console.error('Erro ao baixar audio V2:', error);
+        await sendTelegramReply(chatId, `Erro ao baixar o arquivo V2: ${error?.message || error}. Tente novamente ou digite *pular*:`, 'Markdown');
+      }
+      return;
+    }
+
+    if (session.step === 'awaiting_v2_url') {
+      if (!text) {
+        await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V2 ou digite *pular*:', 'Markdown');
+        return;
+      }
+
+      let urlV2: string | null = null;
+      const lowerInput = text.toLowerCase();
+      if (lowerInput === 'pular' || lowerInput === 'pula') {
+        urlV2 = null;
+      } else {
+        if (!/^https?:\/\//i.test(text)) {
+          await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite *pular*:', 'Markdown');
+          return;
+        }
+        urlV2 = text;
+      }
+
+      try {
+        await sendTelegramReply(chatId, 'Salvando informacoes e gerando previas V1 e V2...');
         const attachedV1 = await attachAudioSlotToPedido(
           session.pedidoId!,
           'v1',
@@ -593,10 +672,19 @@ async function handleTelegramSession(
           session.urlV1 || undefined
         );
 
+        const attachedV2 = await attachAudioSlotToPedido(
+          session.pedidoId!,
+          'v2',
+          session.tempPathV2!,
+          urlV2 || undefined
+        );
+
         const pedido = await getPedido(session.pedidoId!);
         if (pedido) {
           pedido.url_local_servidor = attachedV1.previewUrl;
           pedido.url_referencia_externa_1 = attachedV1.referenceUrl;
+          pedido.url_local_servidor_2 = attachedV2.previewUrl;
+          pedido.url_referencia_externa_2 = attachedV2.referenceUrl;
           const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
           pedido.status_producao = hasBothPreviews
             ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
@@ -607,11 +695,11 @@ async function handleTelegramSession(
 
         await sendTelegramReply(
           chatId,
-          `\u2705 *Musica V1 adicionada com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nA versao V2 foi pulada.`,
+          `\u2705 *Musicas V1 e V2 adicionadas com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nPrevia V2: ${attachedV2.previewUrl}\nReferencia V2: ${attachedV2.referenceUrl || 'Nenhuma'}`,
           'Markdown'
         );
       } catch (error: any) {
-        console.error('Erro ao salvar V1:', error);
+        console.error('Erro ao salvar V1 e V2:', error);
         await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${error.message || error}`);
       } finally {
         clearSessionFiles(session);
@@ -619,93 +707,15 @@ async function handleTelegramSession(
       }
       return;
     }
-
-    const media = message.document || message.audio;
-    if (!media?.file_id) {
-      await sendTelegramReply(chatId, 'Por favor, envie o arquivo de audio para a previa V2 ou digite *pular* para finalizar apenas com a V1:', 'Markdown');
-      return;
-    }
-
+  } catch (error: any) {
+    console.error('Erro na sessao do Telegram:', error);
     try {
-      await sendTelegramReply(chatId, 'Baixando arquivo da faixa V2...');
-      const tempPath = await downloadTelegramFile(media.file_id, media.file_name);
-      session.tempPathV2 = tempPath;
-      session.fileNameV2 = media.file_name;
-      session.step = 'awaiting_v2_url';
-
-      await sendTelegramReply(
-        chatId,
-        'Audio V2 recebido com sucesso!\n\nAgora, envie a *URL de referencia V2* (Suno, YouTube, etc) ou digite *pular*:',
-        'Markdown'
-      );
-    } catch (error: any) {
-      console.error('Erro ao baixar audio V2:', error);
-      await sendTelegramReply(chatId, `Erro ao baixar o arquivo V2: ${error?.message || error}. Tente novamente ou digite *pular*:`, 'Markdown');
+      await sendTelegramReply(chatId, `\u274c Erro ao processar a operacao: ${error?.message || error}. A sessao foi cancelada.`);
+    } catch (replyError) {
+      console.error('Erro ao notificar erro de sessao:', replyError);
     }
-    return;
-  }
-
-  if (session.step === 'awaiting_v2_url') {
-    if (!text) {
-      await sendTelegramReply(chatId, 'Por favor, envie a URL de referencia V2 ou digite *pular*:', 'Markdown');
-      return;
-    }
-
-    let urlV2: string | null = null;
-    const lowerInput = text.toLowerCase();
-    if (lowerInput === 'pular' || lowerInput === 'pula') {
-      urlV2 = null;
-    } else {
-      if (!/^https?:\/\//i.test(text)) {
-        await sendTelegramReply(chatId, 'URL invalida. Envie um link valido com http:// ou https://, ou digite *pular*:', 'Markdown');
-        return;
-      }
-      urlV2 = text;
-    }
-
-    try {
-      await sendTelegramReply(chatId, 'Salvando informacoes e gerando previas V1 e V2...');
-      const attachedV1 = await attachAudioSlotToPedido(
-        session.pedidoId!,
-        'v1',
-        session.tempPathV1!,
-        session.urlV1 || undefined
-      );
-
-      const attachedV2 = await attachAudioSlotToPedido(
-        session.pedidoId!,
-        'v2',
-        session.tempPathV2!,
-        urlV2 || undefined
-      );
-
-      const pedido = await getPedido(session.pedidoId!);
-      if (pedido) {
-        pedido.url_local_servidor = attachedV1.previewUrl;
-        pedido.url_referencia_externa_1 = attachedV1.referenceUrl;
-        pedido.url_local_servidor_2 = attachedV2.previewUrl;
-        pedido.url_referencia_externa_2 = attachedV2.referenceUrl;
-        const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
-        pedido.status_producao = hasBothPreviews
-          ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
-          : 'AGUARDANDO_FAIXAS';
-        pedido.updatedAt = new Date().toISOString();
-        await savePedido(pedido);
-      }
-
-      await sendTelegramReply(
-        chatId,
-        `\u2705 *Musicas V1 e V2 adicionadas com sucesso!*\n\nPedido: ${session.pedidoId}\nPrevia V1: ${attachedV1.previewUrl}\nReferencia V1: ${attachedV1.referenceUrl || 'Nenhuma'}\nPrevia V2: ${attachedV2.previewUrl}\nReferencia V2: ${attachedV2.referenceUrl || 'Nenhuma'}`,
-        'Markdown'
-      );
-    } catch (error: any) {
-      console.error('Erro ao salvar V1 e V2:', error);
-      await sendTelegramReply(chatId, `\u274c Erro ao salvar: ${error.message || error}`);
-    } finally {
-      clearSessionFiles(session);
-      telegramSessions.delete(chatId);
-    }
-    return;
+    clearSessionFiles(session);
+    telegramSessions.delete(chatId);
   }
 }
 
@@ -864,7 +874,6 @@ async function ensureTelegramCommands() {
   try {
     await telegramApiRequest('setMyCommands', {
       commands: [
-        { command: 'stats', description: 'Resumo do sistema' },
         { command: 'resumo', description: 'Resumo do sistema' },
         { command: 'help', description: 'Ajuda e formatos do bot' },
         { command: 'pago', description: 'Aprova pagamento de um pedido' },
