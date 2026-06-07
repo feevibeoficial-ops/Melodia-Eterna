@@ -1302,6 +1302,21 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     }
   });
 
+  app.get('/api/debug/env', (req, res) => {
+    const handle = getInfinitePayHandle();
+    res.json({
+      infinitepayHandleConfigured: Boolean(handle),
+      infinitepayHandlePreview: handle ? `${handle.slice(0, 4)}***${handle.slice(-4)}` : null,
+      appUrlConfigured: Boolean(process.env.APP_URL),
+      appUrl: process.env.APP_URL || null,
+      host: req.get('host') || null,
+      forwardedHost: req.headers['x-forwarded-host'] || null,
+      forwardedProto: req.headers['x-forwarded-proto'] || null,
+      nodeEnv: process.env.NODE_ENV || null,
+      vercelEnv: process.env.VERCEL_ENV || null,
+    });
+  });
+
   app.get('/api/telegram/webhook', (_req, res) => {
     res.status(400).json({
       error: 'Webhook do Telegram requer um segredo na URL e aceita apenas POST.',

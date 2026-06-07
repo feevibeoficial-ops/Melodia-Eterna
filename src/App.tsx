@@ -186,9 +186,6 @@ export default function App() {
       }
 
       setCurrentPedido(data.pedido as PedidoMusica);
-      if (data.whatsappLink) {
-        window.open(data.whatsappLink, '_blank', 'noopener,noreferrer');
-      }
       setView('player-pagamento');
     } catch (err: any) {
       setUiError(err.message || 'Houve um erro na confirmacao do termo.');
