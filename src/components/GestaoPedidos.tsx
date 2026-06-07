@@ -104,7 +104,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || 'Falha ao carregar os modelos de mÃºsica.');
+      throw new Error(data.error || 'Falha ao carregar os modelos de música.');
     }
     setThemes(data as TemaConfig[]);
   }
@@ -300,10 +300,10 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         headers: await authHeaders(),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Falha ao voltar para nÃ£o pago.');
+      if (!response.ok) throw new Error(data.error || 'Falha ao voltar para não pago.');
       await loadOrders();
     } catch (err: any) {
-      setPageError(err.message || 'Falha ao voltar para nÃ£o pago.');
+      setPageError(err.message || 'Falha ao voltar para não pago.');
     } finally {
       setBusyId(null);
     }
@@ -558,7 +558,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             <div className="w-12 h-12 rounded-full bg-natural-sage/10 mx-auto flex items-center justify-center mb-3">
               <Lock className="w-6 h-6 text-natural-sage" />
             </div>
-            <h2 className="text-2xl font-bold font-display text-natural-dark">Acesso Ã  GestÃ£o</h2>
+            <h2 className="text-2xl font-bold font-display text-natural-dark">Acesso à Gestão</h2>
             <p className="text-sm text-natural-subtext mt-1">Entre com seu e-mail e senha do Supabase Auth para abrir a area interna de pedidos.</p>
           </div>
           <input
@@ -572,7 +572,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha da gestÃ£o"
+            placeholder="Senha da gestão"
             className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm"
           />
           {authError && <p className="text-sm text-[#9A5B33]">{authError}</p>}
@@ -601,9 +601,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       </div>
 
       <div>
-        <h2 className="text-3xl font-bold font-display text-natural-dark">GestÃ£o de Pedidos</h2>
+        <h2 className="text-3xl font-bold font-display text-natural-dark">Gestão de Pedidos</h2>
         <p className="text-sm text-natural-subtext mt-1">
-          Anexe as duas mÃºsicas, registre as URLs de referÃªncia e marque o pagamento manualmente quando receber o comprovante.
+          Anexe as duas músicas, registre as URLs de referência e marque o pagamento manualmente quando receber o comprovante.
         </p>
       </div>
 
@@ -634,9 +634,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de mÃºsica e perguntas</h3>
+            <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de música e perguntas</h3>
             <p className="text-sm text-natural-subtext mt-1">
-              Cadastre novos modelos, ajuste nome, descriÃ§Ã£o e questionÃ¡rio sem alterar o cÃ³digo.
+              Cadastre novos modelos, ajuste nome, descrição e questionário sem alterar o código.
             </p>
           </div>
           <button
@@ -659,7 +659,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <p className="text-sm font-bold text-natural-dark">{theme.titulo}</p>
-                    <p className="text-[11px] text-natural-subtext">ID tÃ©cnico: {theme.id}</p>
+                    <p className="text-[11px] text-natural-subtext">ID técnico: {theme.id}</p>
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-natural-subtext">
                     <span>{theme.perguntas.length} pergunta(s)</span>
@@ -671,8 +671,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                 {themeExpanded && (
                 <>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="TÃ­tulo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
-                  <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="DescriÃ§Ã£o" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
+                  <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="Título" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="Descrição" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
                   <input value={theme.emoji} onChange={(e) => setThemeDraft(theme.id, { emoji: e.target.value })} placeholder="Emoji" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.color} onChange={(e) => setThemeDraft(theme.id, { color: e.target.value })} placeholder="Cor" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.bgColor} onChange={(e) => setThemeDraft(theme.id, { bgColor: e.target.value })} placeholder="Gradiente / Background" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
@@ -731,12 +731,12 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         <div>
           <h3 className="text-2xl font-bold font-display text-natural-dark">Prompts por tema</h3>
           <p className="text-sm text-natural-subtext mt-1">
-            Cada tema agora pode ter seu prÃ³prio prompt completo. O sistema injeta apenas respostas do cliente, estilo, voz e regras especiais.
+            Cada tema agora pode ter seu próprio prompt completo. O sistema injeta apenas respostas do cliente, estilo, voz e regras especiais.
           </p>
         </div>
 
         <div className="rounded-2xl border border-[#E8E2D9] bg-[#FAF8F5] px-4 py-3 text-xs text-natural-subtext leading-relaxed">
-          Placeholders disponÃ­veis no prompt de geraÃ§Ã£o: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
+          Placeholders disponíveis no prompt de geração: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
           <br />
           No prompt de refino: <strong>{'{{feedback_usuario}}'}</strong>, <strong>{'{{letra_anterior}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_refine_regra}}'}</strong>.
         </div>
@@ -765,7 +765,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                 {promptExpanded && (
                 <>
                 <label className="block">
-                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de geraÃ§Ã£o</span>
+                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de geração</span>
                   <textarea
                     value={prompt?.composeTemplate || ''}
                     onChange={(e) => setPromptDraft(tema.id, { composeTemplate: e.target.value })}
@@ -837,14 +837,14 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                       </div>
                       <p className="text-sm text-natural-dark">{order.cliente_email}</p>
                       <p className="text-sm text-natural-subtext">{order.cliente_whatsapp}</p>
-                      <p className="text-xs text-natural-subtext">Tema: {themeConfig?.titulo || order.respostas.temaId} | Estilo: {order.respostas.estiloMusical || 'nÃ£o informado'}</p>
+                      <p className="text-xs text-natural-subtext">Tema: {themeConfig?.titulo || order.respostas.temaId} | Estilo: {order.respostas.estiloMusical || 'não informado'}</p>
                     </div>
 
                     <div className="flex items-center gap-4 lg:gap-6">
                       <div className="text-right text-xs text-natural-subtext space-y-1">
-                        <p>PrÃ©via 1: {order.url_local_servidor ? 'anexada' : 'nÃ£o anexada'}</p>
-                        <p>PrÃ©via 2: {order.url_local_servidor_2 ? 'anexada' : 'nÃ£o anexada'}</p>
-                        <p>Comprovante: {order.comprovante_nome_arquivo || 'nÃ£o enviado'}</p>
+                        <p>Prévia 1: {order.url_local_servidor ? 'anexada' : 'não anexada'}</p>
+                        <p>Prévia 2: {order.url_local_servidor_2 ? 'anexada' : 'não anexada'}</p>
+                        <p>Comprovante: {order.comprovante_nome_arquivo || 'não enviado'}</p>
                       </div>
                       <div className="text-natural-subtext">
                         {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -893,7 +893,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                           <div className="space-y-3">
                             <div className="rounded-xl bg-white border border-natural-border p-3">
                               <p className="text-xs font-semibold text-natural-dark">Letra gerada</p>
-                              <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{order.letra_gerada || 'NÃ£o disponÃ­vel.'}</p>
+                              <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{order.letra_gerada || 'Não disponível.'}</p>
                             </div>
                             {order.letra_aprovada && (
                               <div className="rounded-xl bg-white border border-natural-border p-3">
@@ -910,19 +910,19 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                         <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
                           <button type="button" onClick={() => togglePanel(`order-prompt:${order.id}`)} className="w-full text-left mb-3">
                             <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-bold text-natural-dark">Prompt usado na criaÃ§Ã£o</h4>
+                              <h4 className="text-sm font-bold text-natural-dark">Prompt usado na criação</h4>
                               {promptExpanded ? <ChevronUp className="w-4 h-4 text-natural-subtext" /> : <ChevronDown className="w-4 h-4 text-natural-subtext" />}
                             </div>
                           </button>
                           {promptExpanded && (
                             <>
                               <div className="rounded-xl bg-white border border-natural-border p-3">
-                                <p className="text-xs font-semibold text-natural-dark">Prompt de composiÃ§Ã£o</p>
-                                <pre className="mt-2 whitespace-pre-wrap text-xs text-natural-subtext font-mono">{composeInteraction?.prompt || 'Prompt nÃ£o encontrado neste pedido.'}</pre>
+                                <p className="text-xs font-semibold text-natural-dark">Prompt de composição</p>
+                                <pre className="mt-2 whitespace-pre-wrap text-xs text-natural-subtext font-mono">{composeInteraction?.prompt || 'Prompt não encontrado neste pedido.'}</pre>
                               </div>
                               {composeInteraction?.output && (
                                 <div className="rounded-xl bg-white border border-natural-border p-3 mt-3">
-                                  <p className="text-xs font-semibold text-natural-dark">SaÃ­da original da IA</p>
+                                  <p className="text-xs font-semibold text-natural-dark">Saída original da IA</p>
                                   <pre className="mt-2 whitespace-pre-wrap text-xs text-natural-subtext font-mono">{composeInteraction.output}</pre>
                                 </div>
                               )}
@@ -931,7 +931,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                         </div>
 
                         <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
-                          <h4 className="text-sm font-bold text-natural-dark mb-3">GestÃ£o de Ã¡udio e pagamento</h4>
+                          <h4 className="text-sm font-bold text-natural-dark mb-3">Gestão de áudio e pagamento</h4>
                           <div className="space-y-4">
                             <div className="grid md:grid-cols-2 gap-4">
                               <label className="block">
@@ -960,12 +960,12 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                                 />
                                 {draft.fileName2 && <span className="text-[11px] text-natural-subtext mt-1 block">{draft.fileName2}</span>}
                               </label>
-                              <input value={draft.referenceUrl1} onChange={(e) => setDraft(order.id, { referenceUrl1: e.target.value })} placeholder="URL de referÃªncia da faixa 1" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
-                              <input value={draft.referenceUrl2} onChange={(e) => setDraft(order.id, { referenceUrl2: e.target.value })} placeholder="URL de referÃªncia da faixa 2" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                              <input value={draft.referenceUrl1} onChange={(e) => setDraft(order.id, { referenceUrl1: e.target.value })} placeholder="URL de referência da faixa 1" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                              <input value={draft.referenceUrl2} onChange={(e) => setDraft(order.id, { referenceUrl2: e.target.value })} placeholder="URL de referência da faixa 2" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
                             </div>
 
                             <div className="rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-[12px] text-[#9A5B33] leading-relaxed">
-                              O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponÃ­vel, o fallback automÃ¡tico continua funcionando apenas para <strong>WAV</strong>.
+                              O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponível, o fallback automático continua funcionando apenas para <strong>WAV</strong>.
                             </div>
 
                             <div className="flex flex-wrap gap-3">
@@ -976,13 +976,13 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                                 <Send className="w-4 h-4" /> Reenviar letra no Telegram
                               </button>
                               <button type="button" disabled={busy || !draft.source1 || !draft.source2} onClick={() => attachAudio(order.id)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                                <Music2 className="w-4 h-4" /> Anexar faixas e gerar prÃ©vias
+                                <Music2 className="w-4 h-4" /> Anexar faixas e gerar prévias
                               </button>
                               <button type="button" disabled={busy} onClick={() => markPaid(order.id)} className="px-4 py-3 bg-[#2E7D32] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
                                 <CheckCircle2 className="w-4 h-4" /> Marcar como pago
                               </button>
                               <button type="button" disabled={busy} onClick={() => markUnpaid(order.id)} className="px-4 py-3 bg-[#9A5B33] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                                NÃ£o pago
+                                Não pago
                               </button>
                               <button type="button" disabled={busy} onClick={() => resetAudio(order.id)} className="px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-bold text-natural-subtext cursor-pointer disabled:opacity-60">
                                 Limpar faixas
@@ -1090,8 +1090,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
 
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-4">
         <div>
-          <h3 className="text-2xl font-bold font-display text-natural-dark">Conta da GestÃ£o</h3>
-          <p className="text-sm text-natural-subtext mt-1">Conta atual: {adminEmail || 'nÃ£o carregada'}</p>
+          <h3 className="text-2xl font-bold font-display text-natural-dark">Conta da Gestão</h3>
+          <p className="text-sm text-natural-subtext mt-1">Conta atual: {adminEmail || 'não carregada'}</p>
         </div>
         <div className="grid md:grid-cols-2 gap-3">
           <label className="block">

@@ -166,7 +166,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
             ? 'Libere a Previa da Sua Cancao'
             : awaitingPreviewProduction
               ? 'Pagamento da Previa Confirmado'
-              : 'OuÃ§a uma Previa da Sua Cancao'}
+              : 'Ouça uma Previa da Sua Cancao'}
         </h2>
         <p className="text-sm text-natural-subtext max-w-xl mx-auto font-light mt-1 pl-1">
           {awaitingPreviewPayment

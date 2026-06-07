@@ -25,6 +25,8 @@ export default function App() {
   const [loadingLogIndex, setLoadingLogIndex] = useState(0);
   const [paymentReturnStage, setPaymentReturnStage] = useState<'preview' | 'final' | null>(null);
   const [paymentReturnMessage, setPaymentReturnMessage] = useState<string>('Estamos confirmando seu pagamento.');
+  const [lastFormData, setLastFormData] = useState<RespostasFormulario | null>(null);
+  const [lastFormExtraOptions, setLastFormExtraOptions] = useState<{ selectedGenderForRevelacao?: 'menino' | 'menina' } | undefined>(undefined);
 
   const COMPOSITION_LOGS = [
     'Tecendo memorias afetivas...',
@@ -112,6 +114,8 @@ export default function App() {
     data: RespostasFormulario,
     extraOptions?: { selectedGenderForRevelacao?: 'menino' | 'menina' },
   ) => {
+    setLastFormData(data);
+    setLastFormExtraOptions(extraOptions);
     setUiError(null);
     setView('loading-lyrics');
 
@@ -208,6 +212,15 @@ export default function App() {
     setSelectedTheme(null);
     setCurrentPedido(null);
     setUiError(null);
+    setLastFormData(null);
+    setLastFormExtraOptions(undefined);
+  };
+
+  const handleRetryFromError = () => {
+    setUiError(null);
+    if (lastFormData) {
+      handleFormSubmit(lastFormData, lastFormExtraOptions).catch(() => undefined);
+    }
   };
 
   return (
@@ -249,7 +262,7 @@ export default function App() {
                   <p className="text-sm text-natural-subtext mt-1 leading-relaxed">{uiError}</p>
                   <div className="flex gap-3 mt-4">
                     <button type="button" onClick={() => setUiError(null)} className="px-4 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold text-natural-subtext cursor-pointer">Fechar aviso</button>
-                    <button type="button" onClick={() => setUiError(null)} className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5">
+                    <button type="button" onClick={handleRetryFromError} className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5">
                       <RefreshCw className="w-3.5 h-3.5" /> Tentar novamente
                     </button>
                   </div>
@@ -287,7 +300,13 @@ export default function App() {
 
           {view === 'form' && selectedTheme && (
             <motion.div key="form" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }}>
-              <QuestionsForm theme={selectedTheme} onBack={handleRestart} onSubmit={handleFormSubmit} />
+              <QuestionsForm
+                theme={selectedTheme}
+                initialData={selectedTheme.id === lastFormData?.temaId ? lastFormData : null}
+                initialSelectedGenderForRevelacao={lastFormExtraOptions?.selectedGenderForRevelacao}
+                onBack={handleRestart}
+                onSubmit={handleFormSubmit}
+              />
             </motion.div>
           )}
 
