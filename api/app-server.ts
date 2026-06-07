@@ -156,6 +156,13 @@ function getInfinitePayHandle() {
   return (process.env.INFINITEPAY_HANDLE || '').trim().replace(/^\$/, '');
 }
 
+function formatInfinitePayPhoneNumber(value: string) {
+  const digits = (value || '').replace(/\D/g, '');
+  if (!digits) return '+5500000000000';
+  if (digits.startsWith('55')) return `+${digits}`;
+  return `+55${digits}`;
+}
+
 function hasAnyPreview(pedido: PedidoMusica) {
   return Boolean(pedido.url_local_servidor || pedido.url_local_servidor_2);
 }
@@ -247,7 +254,7 @@ async function createInfinitePayCheckoutLink(req: express.Request, pedido: Pedid
       customer: {
         name: pedido.cliente_email.split('@')[0] || pedido.cliente_email || pedido.id,
         email: pedido.cliente_email,
-        phone_number: pedido.cliente_whatsapp.startsWith('+') ? pedido.cliente_whatsapp : `+${pedido.cliente_whatsapp.replace(/\D/g, '')}`,
+        phone_number: formatInfinitePayPhoneNumber(pedido.cliente_whatsapp),
       },
       items: [
         {

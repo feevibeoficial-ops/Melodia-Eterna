@@ -21,6 +21,22 @@ function parseRevealBabyNames(value: string | undefined) {
   };
 }
 
+function formatBrazilianWhatsApp(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 13);
+  const withoutCountry = digits.startsWith('55') ? digits.slice(2) : digits;
+
+  if (withoutCountry.length <= 2) return withoutCountry;
+  if (withoutCountry.length <= 7) return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2)}`;
+  if (withoutCountry.length <= 10) return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 6)}-${withoutCountry.slice(6)}`;
+  return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 7)}-${withoutCountry.slice(7, 11)}`;
+}
+
+function normalizeBrazilianWhatsApp(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('55') ? `+${digits}` : `+55${digits}`;
+}
+
 export default function QuestionsForm({ theme, initialData, initialSelectedGenderForRevelacao, onBack, onSubmit }: QuestionsFormProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
@@ -34,7 +50,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   const [estiloMusical, setEstiloMusical] = useState(initialData?.estiloMusical || 'RomÃ¢ntico');
   const [provVoice, setProvVoice] = useState(initialData?.provVoice || 'indiferente');
   const [clienteEmail, setClienteEmail] = useState(initialData?.clienteEmail || '');
-  const [clienteWhatsapp, setClienteWhatsapp] = useState(initialData?.clienteWhatsapp || '');
+  const [clienteWhatsapp, setClienteWhatsapp] = useState(formatBrazilianWhatsApp(initialData?.clienteWhatsapp || ''));
   const [selectedGenderForRevelacao, setSelectedGenderForRevelacao] = useState<'menino' | 'menina'>(initialSelectedGenderForRevelacao || 'menino');
   const [recordingFieldId, setRecordingFieldId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
@@ -130,8 +146,8 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
   const isContactValid = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneDigits = clienteWhatsapp.replace(/[^\d]/g, '');
-    return emailRegex.test(clienteEmail) && phoneDigits.length >= 10;
+    const phoneDigits = normalizeBrazilianWhatsApp(clienteWhatsapp).replace(/[^\d]/g, '');
+    return emailRegex.test(clienteEmail) && phoneDigits.length >= 12;
   };
 
   const handleNextStep = () => {
@@ -163,7 +179,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
       estiloMusical,
       provVoice,
       clienteEmail,
-      clienteWhatsapp,
+      clienteWhatsapp: normalizeBrazilianWhatsApp(clienteWhatsapp),
     };
 
     onSubmit(payload, theme.id === 'revelacao' ? { selectedGenderForRevelacao } : undefined);
@@ -445,8 +461,8 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                 <input
                   type="tel"
                   value={clienteWhatsapp}
-                  onChange={(e) => setClienteWhatsapp(e.target.value)}
-                  placeholder="DDD + NÃºmero (Ex: 11 99999-8888)"
+                  onChange={(e) => setClienteWhatsapp(formatBrazilianWhatsApp(e.target.value))}
+                  placeholder="DDD + numero (Ex: 11 99999-8888)"
                   className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white transition-all text-natural-dark font-light"
                 />
               </div>
