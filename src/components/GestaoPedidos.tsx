@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, CheckCircle2, LoaderCircle, Lock, Mail, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, LoaderCircle, Lock, Mail, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
 import { DEFAULT_TEMAS, PedidoMusica, PromptTemplate, TemaConfig, TemaId, TemaPergunta } from '../types';
 import { getAdminAccessToken, getAdminSession, getAdminSupabaseClient } from '../lib/admin-auth';
 
@@ -36,6 +36,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
   const [pageError, setPageError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<GestaoTab>('pedidos');
   const [adminEmail, setAdminEmail] = useState('');
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
 
   async function authHeaders() {
     const accessToken = await getAdminAccessToken();
@@ -102,7 +104,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || 'Falha ao carregar os modelos de música.');
+      throw new Error(data.error || 'Falha ao carregar os modelos de mÃºsica.');
     }
     setThemes(data as TemaConfig[]);
   }
@@ -298,10 +300,10 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         headers: await authHeaders(),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Falha ao voltar para não pago.');
+      if (!response.ok) throw new Error(data.error || 'Falha ao voltar para nÃ£o pago.');
       await loadOrders();
     } catch (err: any) {
-      setPageError(err.message || 'Falha ao voltar para não pago.');
+      setPageError(err.message || 'Falha ao voltar para nÃ£o pago.');
     } finally {
       setBusyId(null);
     }
@@ -399,7 +401,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       id: `novo_tema_${timestamp}`,
       titulo: 'Novo tema',
       descricao: 'Descreva este modelo musical.',
-      emoji: '🎵',
+      emoji: 'ðŸŽµ',
       bgColor: 'from-stone-200/40 to-stone-300/20',
       color: 'stone',
       sortOrder: themes.length,
@@ -497,6 +499,54 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     }));
   }
 
+  function toggleOrderExpanded(orderId: string) {
+    setExpandedOrders((current) => ({
+      ...current,
+      [orderId]: !current[orderId],
+    }));
+  }
+
+  function togglePanel(panelId: string) {
+    setExpandedPanels((current) => ({
+      ...current,
+      [panelId]: !current[panelId],
+    }));
+  }
+
+  function getThemeConfig(themeId: string) {
+    return themes.find((theme) => theme.id === themeId) || DEFAULT_TEMAS.find((theme) => theme.id === themeId) || null;
+  }
+
+  function getComposeInteraction(order: PedidoMusica) {
+    return [...(order.ai_interactions || [])].reverse().find((interaction) => interaction.kind === 'compose') || null;
+  }
+
+  async function deleteOrder(orderId: string) {
+    const confirmed = window.confirm(`Excluir o pedido ${orderId}? Essa acao nao pode ser desfeita.`);
+    if (!confirmed) return;
+
+    setBusyId(orderId);
+    setPageError(null);
+    try {
+      const response = await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: await authHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Falha ao excluir pedido.');
+      setOrders((current) => current.filter((order) => order.id !== orderId));
+      setExpandedOrders((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    } catch (err: any) {
+      setPageError(err.message || 'Falha ao excluir pedido.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (!authenticated) {
     return (
       <div className="max-w-md mx-auto px-4 py-8">
@@ -508,7 +558,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             <div className="w-12 h-12 rounded-full bg-natural-sage/10 mx-auto flex items-center justify-center mb-3">
               <Lock className="w-6 h-6 text-natural-sage" />
             </div>
-            <h2 className="text-2xl font-bold font-display text-natural-dark">Acesso à Gestão</h2>
+            <h2 className="text-2xl font-bold font-display text-natural-dark">Acesso Ã  GestÃ£o</h2>
             <p className="text-sm text-natural-subtext mt-1">Entre com seu e-mail e senha do Supabase Auth para abrir a area interna de pedidos.</p>
           </div>
           <input
@@ -522,7 +572,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Senha da gestão"
+            placeholder="Senha da gestÃ£o"
             className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm"
           />
           {authError && <p className="text-sm text-[#9A5B33]">{authError}</p>}
@@ -551,9 +601,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       </div>
 
       <div>
-        <h2 className="text-3xl font-bold font-display text-natural-dark">Gestão de Pedidos</h2>
+        <h2 className="text-3xl font-bold font-display text-natural-dark">GestÃ£o de Pedidos</h2>
         <p className="text-sm text-natural-subtext mt-1">
-          Anexe as duas músicas, registre as URLs de referência e marque o pagamento manualmente quando receber o comprovante.
+          Anexe as duas mÃºsicas, registre as URLs de referÃªncia e marque o pagamento manualmente quando receber o comprovante.
         </p>
       </div>
 
@@ -584,9 +634,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de música e perguntas</h3>
+            <h3 className="text-2xl font-bold font-display text-natural-dark">Modelos de mÃºsica e perguntas</h3>
             <p className="text-sm text-natural-subtext mt-1">
-              Cadastre novos modelos, ajuste nome, descrição e questionário sem alterar o código.
+              Cadastre novos modelos, ajuste nome, descriÃ§Ã£o e questionÃ¡rio sem alterar o cÃ³digo.
             </p>
           </div>
           <button
@@ -601,29 +651,46 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         <div className="space-y-4">
           {themes.map((theme) => {
             const saving = promptBusyId === theme.id;
+            const themeExpanded = Boolean(expandedPanels[`theme:${theme.id}`]);
+            const questionsExpanded = Boolean(expandedPanels[`theme-questions:${theme.id}`]);
             return (
               <div key={theme.id} className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4 space-y-4">
+                <button type="button" onClick={() => togglePanel(`theme:${theme.id}`)} className="w-full text-left">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div>
                     <p className="text-sm font-bold text-natural-dark">{theme.titulo}</p>
-                    <p className="text-[11px] text-natural-subtext">ID técnico: {theme.id}</p>
+                    <p className="text-[11px] text-natural-subtext">ID tÃ©cnico: {theme.id}</p>
                   </div>
-                  <div className="text-[11px] text-natural-subtext">
-                    {theme.perguntas.length} pergunta(s)
+                  <div className="flex items-center gap-3 text-[11px] text-natural-subtext">
+                    <span>{theme.perguntas.length} pergunta(s)</span>
+                    {themeExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                 </div>
+                </button>
 
+                {themeExpanded && (
+                <>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="Título" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
-                  <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="Descrição" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
+                  <input value={theme.titulo} onChange={(e) => setThemeDraft(theme.id, { titulo: e.target.value })} placeholder="TÃ­tulo" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
+                  <input value={theme.descricao} onChange={(e) => setThemeDraft(theme.id, { descricao: e.target.value })} placeholder="DescriÃ§Ã£o" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
                   <input value={theme.emoji} onChange={(e) => setThemeDraft(theme.id, { emoji: e.target.value })} placeholder="Emoji" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.color} onChange={(e) => setThemeDraft(theme.id, { color: e.target.value })} placeholder="Cor" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm" />
                   <input value={theme.bgColor} onChange={(e) => setThemeDraft(theme.id, { bgColor: e.target.value })} placeholder="Gradiente / Background" className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-sm md:col-span-2" />
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-natural-dark">Perguntas</p>
+                  <button type="button" onClick={() => togglePanel(`theme-questions:${theme.id}`)} className="w-full rounded-2xl border border-natural-border bg-white p-3 text-left">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-natural-dark">Perguntas</p>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] text-natural-subtext">{theme.perguntas.length} item(ns)</span>
+                        {questionsExpanded ? <ChevronUp className="w-4 h-4 text-natural-subtext" /> : <ChevronDown className="w-4 h-4 text-natural-subtext" />}
+                      </div>
+                    </div>
+                  </button>
+                  {questionsExpanded && (
+                  <>
+                  <div className="flex items-center justify-end">
                     <button type="button" onClick={() => addQuestion(theme.id)} className="px-3 py-2 bg-white border border-natural-border rounded-xl text-xs font-semibold cursor-pointer">Adicionar pergunta</button>
                   </div>
                   {theme.perguntas.map((question) => (
@@ -638,7 +705,11 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                       </div>
                     </div>
                   ))}
+                  </>
+                  )}
                 </div>
+                </>
+                )}
 
                 <div className="flex flex-wrap gap-3">
                   <button type="button" disabled={saving} onClick={() => saveTheme(theme)} className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
@@ -660,12 +731,12 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
         <div>
           <h3 className="text-2xl font-bold font-display text-natural-dark">Prompts por tema</h3>
           <p className="text-sm text-natural-subtext mt-1">
-            Cada tema agora pode ter seu próprio prompt completo. O sistema injeta apenas respostas do cliente, estilo, voz e regras especiais.
+            Cada tema agora pode ter seu prÃ³prio prompt completo. O sistema injeta apenas respostas do cliente, estilo, voz e regras especiais.
           </p>
         </div>
 
         <div className="rounded-2xl border border-[#E8E2D9] bg-[#FAF8F5] px-4 py-3 text-xs text-natural-subtext leading-relaxed">
-          Placeholders disponíveis no prompt de geração: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
+          Placeholders disponÃ­veis no prompt de geraÃ§Ã£o: <strong>{'{{respostas_cliente}}'}</strong>, <strong>{'{{estilo_musical}}'}</strong>, <strong>{'{{voz_preferida}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_regra}}'}</strong>.
           <br />
           No prompt de refino: <strong>{'{{feedback_usuario}}'}</strong>, <strong>{'{{letra_anterior}}'}</strong>, <strong>{'{{nome_bebe_revelacao}}'}</strong>, <strong>{'{{sexo_bebe_revelacao}}'}</strong>, <strong>{'{{revelacao_refine_regra}}'}</strong>.
         </div>
@@ -674,26 +745,27 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
           {themes.map((tema) => {
             const prompt = promptTemplates[tema.id];
             const saving = promptBusyId === tema.id;
+            const promptExpanded = Boolean(expandedPanels[`prompt:${tema.id}`]);
 
             return (
               <div key={tema.id} className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4 space-y-3">
+                <button type="button" onClick={() => togglePanel(`prompt:${tema.id}`)} className="w-full text-left">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-bold text-natural-dark">{tema.titulo}</p>
                     <p className="text-[11px] text-natural-subtext">ID: {tema.id}</p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={saving || !prompt}
-                    onClick={() => savePromptTemplate(tema.id)}
-                    className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60"
-                  >
-                    <Save className="w-3.5 h-3.5" /> Salvar prompt
-                  </button>
+                  <div className="flex items-center gap-3 text-[11px] text-natural-subtext">
+                    <span>Prompt do tema</span>
+                    {promptExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </div>
                 </div>
+                </button>
 
+                {promptExpanded && (
+                <>
                 <label className="block">
-                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de geração</span>
+                  <span className="text-xs font-semibold text-natural-subtext block mb-2">Prompt de geraÃ§Ã£o</span>
                   <textarea
                     value={prompt?.composeTemplate || ''}
                     onChange={(e) => setPromptDraft(tema.id, { composeTemplate: e.target.value })}
@@ -711,6 +783,16 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                     className="w-full px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-mono"
                   />
                 </label>
+                <button
+                  type="button"
+                  disabled={saving || !prompt}
+                  onClick={() => savePromptTemplate(tema.id)}
+                  className="px-4 py-2 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  <Save className="w-3.5 h-3.5" /> Salvar prompt
+                </button>
+                </>
+                )}
               </div>
             );
           })}
@@ -734,6 +816,200 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
           {orders.map((order) => {
             const draft = drafts[order.id] || { source1: '', source2: '', referenceUrl1: '', referenceUrl2: '', fileName1: '', fileName2: '' };
             const busy = busyId === order.id;
+            const isExpanded = Boolean(expandedOrders[order.id]);
+            const themeConfig = getThemeConfig(order.respostas.temaId);
+            const composeInteraction = getComposeInteraction(order);
+            const orderedQuestions = [...(themeConfig?.perguntas || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+            const extraAnswers = Object.entries(order.respostas.respostas || {}).filter(([questionId]) => !orderedQuestions.some((question) => question.id === questionId));
+            const answersExpanded = Boolean(expandedPanels[`order-answers:${order.id}`]);
+            const lyricsExpanded = Boolean(expandedPanels[`order-lyrics:${order.id}`]);
+            const promptExpanded = Boolean(expandedPanels[`order-prompt:${order.id}`]);
+
+            return (
+              <motion.div key={order.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs">
+                <button type="button" onClick={() => toggleOrderExpanded(order.id)} className="w-full text-left">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-natural-dark">{order.id}</span>
+                        <span className="text-[10px] uppercase px-2 py-0.5 rounded border bg-natural-sage-light text-natural-subtext">{order.status_producao}</span>
+                        <span className={`text-[10px] uppercase px-2 py-0.5 rounded border ${order.status_pagamento === 'PAGO' ? 'bg-[#EBF5EE] text-[#1B5E20] border-[#C8E6C9]' : 'bg-[#FFF7F2] text-[#9A5B33] border-[#E7C7AF]'}`}>{order.status_pagamento}</span>
+                      </div>
+                      <p className="text-sm text-natural-dark">{order.cliente_email}</p>
+                      <p className="text-sm text-natural-subtext">{order.cliente_whatsapp}</p>
+                      <p className="text-xs text-natural-subtext">Tema: {themeConfig?.titulo || order.respostas.temaId} | Estilo: {order.respostas.estiloMusical || 'nÃ£o informado'}</p>
+                    </div>
+
+                    <div className="flex items-center gap-4 lg:gap-6">
+                      <div className="text-right text-xs text-natural-subtext space-y-1">
+                        <p>PrÃ©via 1: {order.url_local_servidor ? 'anexada' : 'nÃ£o anexada'}</p>
+                        <p>PrÃ©via 2: {order.url_local_servidor_2 ? 'anexada' : 'nÃ£o anexada'}</p>
+                        <p>Comprovante: {order.comprovante_nome_arquivo || 'nÃ£o enviado'}</p>
+                      </div>
+                      <div className="text-natural-subtext">
+                        {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-6 pt-6 border-t border-natural-border space-y-6">
+                    <div className="grid xl:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
+                          <button type="button" onClick={() => togglePanel(`order-answers:${order.id}`)} className="w-full text-left mb-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-bold text-natural-dark">Perguntas e respostas</h4>
+                              {answersExpanded ? <ChevronUp className="w-4 h-4 text-natural-subtext" /> : <ChevronDown className="w-4 h-4 text-natural-subtext" />}
+                            </div>
+                          </button>
+                          {answersExpanded && (
+                          <div className="space-y-3">
+                            {orderedQuestions.map((question) => (
+                              <div key={question.id} className="rounded-xl bg-white border border-natural-border p-3">
+                                <p className="text-xs font-semibold text-natural-dark">{question.label}</p>
+                                <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{order.respostas.respostas?.[question.id] || 'Sem resposta.'}</p>
+                              </div>
+                            ))}
+                            {extraAnswers.map(([questionId, answer]) => (
+                              <div key={questionId} className="rounded-xl bg-white border border-natural-border p-3">
+                                <p className="text-xs font-semibold text-natural-dark">{questionId}</p>
+                                <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{answer || 'Sem resposta.'}</p>
+                              </div>
+                            ))}
+                          </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
+                          <button type="button" onClick={() => togglePanel(`order-lyrics:${order.id}`)} className="w-full text-left mb-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-bold text-natural-dark">Letra</h4>
+                              {lyricsExpanded ? <ChevronUp className="w-4 h-4 text-natural-subtext" /> : <ChevronDown className="w-4 h-4 text-natural-subtext" />}
+                            </div>
+                          </button>
+                          {lyricsExpanded && (
+                          <div className="space-y-3">
+                            <div className="rounded-xl bg-white border border-natural-border p-3">
+                              <p className="text-xs font-semibold text-natural-dark">Letra gerada</p>
+                              <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{order.letra_gerada || 'NÃ£o disponÃ­vel.'}</p>
+                            </div>
+                            {order.letra_aprovada && (
+                              <div className="rounded-xl bg-white border border-natural-border p-3">
+                                <p className="text-xs font-semibold text-natural-dark">Letra aprovada</p>
+                                <p className="text-sm text-natural-subtext mt-1 whitespace-pre-wrap">{order.letra_aprovada}</p>
+                              </div>
+                            )}
+                          </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
+                          <button type="button" onClick={() => togglePanel(`order-prompt:${order.id}`)} className="w-full text-left mb-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-bold text-natural-dark">Prompt usado na criaÃ§Ã£o</h4>
+                              {promptExpanded ? <ChevronUp className="w-4 h-4 text-natural-subtext" /> : <ChevronDown className="w-4 h-4 text-natural-subtext" />}
+                            </div>
+                          </button>
+                          {promptExpanded && (
+                            <>
+                              <div className="rounded-xl bg-white border border-natural-border p-3">
+                                <p className="text-xs font-semibold text-natural-dark">Prompt de composiÃ§Ã£o</p>
+                                <pre className="mt-2 whitespace-pre-wrap text-xs text-natural-subtext font-mono">{composeInteraction?.prompt || 'Prompt nÃ£o encontrado neste pedido.'}</pre>
+                              </div>
+                              {composeInteraction?.output && (
+                                <div className="rounded-xl bg-white border border-natural-border p-3 mt-3">
+                                  <p className="text-xs font-semibold text-natural-dark">SaÃ­da original da IA</p>
+                                  <pre className="mt-2 whitespace-pre-wrap text-xs text-natural-subtext font-mono">{composeInteraction.output}</pre>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        <div className="rounded-2xl border border-natural-border bg-[#FCFBF8] p-4">
+                          <h4 className="text-sm font-bold text-natural-dark mb-3">GestÃ£o de Ã¡udio e pagamento</h4>
+                          <div className="space-y-4">
+                            <div className="grid md:grid-cols-2 gap-4">
+                              <label className="block">
+                                <span className="text-xs font-semibold text-natural-subtext block mb-2">Upload da faixa 1</span>
+                                <input
+                                  type="file"
+                                  accept=".mp3,.wav,audio/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadFile(order.id, 'v1', file).catch(console.error);
+                                  }}
+                                  className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm"
+                                />
+                                {draft.fileName1 && <span className="text-[11px] text-natural-subtext mt-1 block">{draft.fileName1}</span>}
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-semibold text-natural-subtext block mb-2">Upload da faixa 2</span>
+                                <input
+                                  type="file"
+                                  accept=".mp3,.wav,audio/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadFile(order.id, 'v2', file).catch(console.error);
+                                  }}
+                                  className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm"
+                                />
+                                {draft.fileName2 && <span className="text-[11px] text-natural-subtext mt-1 block">{draft.fileName2}</span>}
+                              </label>
+                              <input value={draft.referenceUrl1} onChange={(e) => setDraft(order.id, { referenceUrl1: e.target.value })} placeholder="URL de referÃªncia da faixa 1" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                              <input value={draft.referenceUrl2} onChange={(e) => setDraft(order.id, { referenceUrl2: e.target.value })} placeholder="URL de referÃªncia da faixa 2" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                            </div>
+
+                            <div className="rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-[12px] text-[#9A5B33] leading-relaxed">
+                              O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponÃ­vel, o fallback automÃ¡tico continua funcionando apenas para <strong>WAV</strong>.
+                            </div>
+
+                            <div className="flex flex-wrap gap-3">
+                              <button type="button" disabled={busy} onClick={() => deleteOrder(order.id)} className="px-4 py-3 bg-[#8B1E1E] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                                <Trash2 className="w-4 h-4" /> Excluir pedido
+                              </button>
+                              <button type="button" disabled={busy || !order.letra_aprovada} onClick={() => resendTelegram(order.id)} className="px-4 py-3 bg-[#1F7A4D] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                                <Send className="w-4 h-4" /> Reenviar letra no Telegram
+                              </button>
+                              <button type="button" disabled={busy || !draft.source1 || !draft.source2} onClick={() => attachAudio(order.id)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                                <Music2 className="w-4 h-4" /> Anexar faixas e gerar prÃ©vias
+                              </button>
+                              <button type="button" disabled={busy} onClick={() => markPaid(order.id)} className="px-4 py-3 bg-[#2E7D32] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                                <CheckCircle2 className="w-4 h-4" /> Marcar como pago
+                              </button>
+                              <button type="button" disabled={busy} onClick={() => markUnpaid(order.id)} className="px-4 py-3 bg-[#9A5B33] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
+                                NÃ£o pago
+                              </button>
+                              <button type="button" disabled={busy} onClick={() => resetAudio(order.id)} className="px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-bold text-natural-subtext cursor-pointer disabled:opacity-60">
+                                Limpar faixas
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      ))}
+
+      {false && activeTab === 'pedidos' && (loading ? (
+        <div className="py-20 text-center text-natural-subtext">
+          <LoaderCircle className="w-8 h-8 animate-spin mx-auto mb-3" />
+          Carregando pedidos...
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {orders.map((order) => {
+            const draft = drafts[order.id] || { source1: '', source2: '', referenceUrl1: '', referenceUrl2: '', fileName1: '', fileName2: '' };
+            const busy = busyId === order.id;
             return (
               <motion.div key={order.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs">
                 <div className="flex flex-col lg:flex-row gap-6">
@@ -746,9 +1022,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                     <p className="text-sm text-natural-dark">{order.cliente_email}</p>
                     <p className="text-sm text-natural-subtext">{order.cliente_whatsapp}</p>
                     <p className="text-xs text-natural-subtext">Tema: {order.respostas.temaId} | Estilo: {order.respostas.estiloMusical}</p>
-                    <p className="text-xs text-natural-subtext">Prévia 1: {order.url_local_servidor || 'não anexada'}</p>
-                    <p className="text-xs text-natural-subtext">Prévia 2: {order.url_local_servidor_2 || 'não anexada'}</p>
-                    <p className="text-xs text-natural-subtext">Comprovante: {order.comprovante_nome_arquivo || 'não enviado'}</p>
+                    <p className="text-xs text-natural-subtext">PrÃ©via 1: {order.url_local_servidor || 'nÃ£o anexada'}</p>
+                    <p className="text-xs text-natural-subtext">PrÃ©via 2: {order.url_local_servidor_2 || 'nÃ£o anexada'}</p>
+                    <p className="text-xs text-natural-subtext">Comprovante: {order.comprovante_nome_arquivo || 'nÃ£o enviado'}</p>
                   </div>
 
                   <div className="lg:flex-1 space-y-4">
@@ -779,12 +1055,12 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                         />
                         {draft.fileName2 && <span className="text-[11px] text-natural-subtext mt-1 block">{draft.fileName2}</span>}
                       </label>
-                      <input value={draft.referenceUrl1} onChange={(e) => setDraft(order.id, { referenceUrl1: e.target.value })} placeholder="URL de referência da faixa 1" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
-                      <input value={draft.referenceUrl2} onChange={(e) => setDraft(order.id, { referenceUrl2: e.target.value })} placeholder="URL de referência da faixa 2" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                      <input value={draft.referenceUrl1} onChange={(e) => setDraft(order.id, { referenceUrl1: e.target.value })} placeholder="URL de referÃªncia da faixa 1" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
+                      <input value={draft.referenceUrl2} onChange={(e) => setDraft(order.id, { referenceUrl2: e.target.value })} placeholder="URL de referÃªncia da faixa 2" className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-sm" />
                     </div>
 
                     <div className="rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-[12px] text-[#9A5B33] leading-relaxed">
-                      O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponível, o fallback automático continua funcionando apenas para <strong>WAV</strong>.
+                      O servidor tenta cortar <strong>MP3 e WAV</strong> com FFmpeg. Se o ambiente estiver sem FFmpeg disponÃ­vel, o fallback automÃ¡tico continua funcionando apenas para <strong>WAV</strong>.
                     </div>
 
                     <div className="flex flex-wrap gap-3">
@@ -792,13 +1068,13 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                         <Send className="w-4 h-4" /> Reenviar letra no Telegram
                       </button>
                       <button type="button" disabled={busy || !draft.source1 || !draft.source2} onClick={() => attachAudio(order.id)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                        <Music2 className="w-4 h-4" /> Anexar faixas e gerar prévias
+                        <Music2 className="w-4 h-4" /> Anexar faixas e gerar prÃ©vias
                       </button>
                       <button type="button" disabled={busy} onClick={() => markPaid(order.id)} className="px-4 py-3 bg-[#2E7D32] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
                         <CheckCircle2 className="w-4 h-4" /> Marcar como pago
                       </button>
                       <button type="button" disabled={busy} onClick={() => markUnpaid(order.id)} className="px-4 py-3 bg-[#9A5B33] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                        Não pago
+                        NÃ£o pago
                       </button>
                       <button type="button" disabled={busy} onClick={() => resetAudio(order.id)} className="px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-bold text-natural-subtext cursor-pointer disabled:opacity-60">
                         Limpar faixas
@@ -814,8 +1090,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
 
       <div className="bg-white border border-natural-border rounded-3xl p-5 md:p-6 shadow-xs space-y-4">
         <div>
-          <h3 className="text-2xl font-bold font-display text-natural-dark">Conta da Gestão</h3>
-          <p className="text-sm text-natural-subtext mt-1">Conta atual: {adminEmail || 'não carregada'}</p>
+          <h3 className="text-2xl font-bold font-display text-natural-dark">Conta da GestÃ£o</h3>
+          <p className="text-sm text-natural-subtext mt-1">Conta atual: {adminEmail || 'nÃ£o carregada'}</p>
         </div>
         <div className="grid md:grid-cols-2 gap-3">
           <label className="block">

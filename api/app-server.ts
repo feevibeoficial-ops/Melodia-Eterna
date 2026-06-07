@@ -9,7 +9,7 @@ dotenv.config({ path: '.env.local' });
 dotenv.config();
 
 import type { RespostasFormulario, PedidoMusica, PromptTemplate, TemaConfig } from '../src/types.js';
-import { savePedido, getPedido, listPedidosByContact, listAllPedidos } from '../server/db.js';
+import { savePedido, getPedido, listPedidosByContact, listAllPedidos, deletePedido } from '../server/db.js';
 import { composeLyricsWithMetadata, refineLyricsWithMetadata } from '../server/gemini.js';
 import { attachAudioSlotToPedido, attachManualAudioToPedido, clearPedidoAudio, getAudioFile, saveUploadedTempFile } from '../server/audio.js';
 import { getSupabaseClient, isSupabaseConfigured } from '../server/supabase.js';
@@ -136,6 +136,140 @@ function makePixCode(id: string) {
   }
 
   return `${payloadWithoutCrc}${crc.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+const PREVIEW_UNLOCK_AMOUNT_CENTS = 200;
+const FINAL_PAYMENT_AMOUNT_CENTS = 1799;
+const TOTAL_ORDER_AMOUNT_CENTS = 1999;
+
+type InfinitePayStage = 'preview' | 'final';
+
+function getBaseUrl(req: express.Request) {
+  const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0]?.trim();
+  const forwardedHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim();
+  const protocol = forwardedProto || req.protocol || 'https';
+  const host = forwardedHost || req.get('host') || 'localhost:3000';
+  return `${protocol}://${host}`;
+}
+
+function getInfinitePayHandle() {
+  return (process.env.INFINITEPAY_HANDLE || '').trim().replace(/^\$/, '');
+}
+
+function hasAnyPreview(pedido: PedidoMusica) {
+  return Boolean(pedido.url_local_servidor || pedido.url_local_servidor_2);
+}
+
+function hasBothPreviews(pedido: PedidoMusica) {
+  return Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
+}
+
+function isPreviewUnlocked(pedido: PedidoMusica) {
+  return pedido.status_producao !== 'LETRA_APROVADA' && pedido.status_producao !== 'AGUARDANDO_APROVACAO';
+}
+
+function resolvePendingPaymentStage(pedido: PedidoMusica): InfinitePayStage | null {
+  if (pedido.status_pagamento === 'PAGO') return null;
+  if (!pedido.termo_aceite_assinado) return null;
+  if (!isPreviewUnlocked(pedido)) return 'preview';
+  return 'final';
+}
+
+function getChargeAmount(stage: InfinitePayStage) {
+  return stage === 'preview' ? PREVIEW_UNLOCK_AMOUNT_CENTS : FINAL_PAYMENT_AMOUNT_CENTS;
+}
+
+function buildInfinitePayOrderNsu(pedidoId: string, stage: InfinitePayStage) {
+  return `${pedidoId}:${stage}:${Date.now()}`;
+}
+
+function parseInfinitePayOrderNsu(orderNsu: string | undefined) {
+  if (!orderNsu) return null;
+  const [pedidoId, stage] = orderNsu.split(':');
+  if (!pedidoId || (stage !== 'preview' && stage !== 'final')) return null;
+  return {
+    pedidoId,
+    stage: stage as InfinitePayStage,
+  };
+}
+
+function refreshProductionStatusAfterAudioUpdate(pedido: PedidoMusica) {
+  if (pedido.status_pagamento === 'PAGO') {
+    pedido.status_producao = 'LIBERADO';
+    return;
+  }
+
+  if (!isPreviewUnlocked(pedido)) {
+    pedido.status_producao = 'LETRA_APROVADA';
+    return;
+  }
+
+  pedido.status_producao = hasAnyPreview(pedido) ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
+}
+
+async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica) {
+  if (pedido.status_pagamento === 'PAGO') return pedido;
+  pedido.status_producao = hasAnyPreview(pedido) ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
+  pedido.updatedAt = new Date().toISOString();
+  await savePedido(pedido);
+  return pedido;
+}
+
+async function markFinalPaymentAsConfirmed(pedido: PedidoMusica) {
+  const expDate = new Date();
+  expDate.setDate(expDate.getDate() + 10);
+  pedido.status_pagamento = 'PAGO';
+  pedido.status_producao = 'LIBERADO';
+  pedido.data_expiracao_local = expDate.toISOString();
+  pedido.updatedAt = new Date().toISOString();
+  await savePedido(pedido);
+  return pedido;
+}
+
+async function createInfinitePayCheckoutLink(req: express.Request, pedido: PedidoMusica, stage: InfinitePayStage) {
+  const handle = getInfinitePayHandle();
+  if (!handle) {
+    throw new Error('INFINITEPAY_HANDLE nao configurado no servidor.');
+  }
+
+  const baseUrl = getBaseUrl(req);
+  const orderNsu = buildInfinitePayOrderNsu(pedido.id, stage);
+  const response = await fetch('https://api.checkout.infinitepay.io/links', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      handle,
+      redirect_url: `${baseUrl}/?pedido=${encodeURIComponent(pedido.id)}&payment_return=1&stage=${stage}`,
+      webhook_url: `${baseUrl}/api/payments/infinitepay/webhook`,
+      order_nsu: orderNsu,
+      customer: {
+        name: pedido.cliente_email.split('@')[0] || pedido.cliente_email || pedido.id,
+        email: pedido.cliente_email,
+        phone_number: pedido.cliente_whatsapp.startsWith('+') ? pedido.cliente_whatsapp : `+${pedido.cliente_whatsapp.replace(/\D/g, '')}`,
+      },
+      items: [
+        {
+          quantity: 1,
+          price: getChargeAmount(stage),
+          description: stage === 'preview'
+            ? 'Liberacao da previa - valor abatido do total'
+            : 'Complemento final da musica personalizada',
+        },
+      ],
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.url) {
+    throw new Error(data?.message || data?.error || 'Falha ao criar checkout da InfinitePay.');
+  }
+
+  return {
+    checkoutUrl: data.url as string,
+    orderNsu,
+  };
 }
 
 function createInteractionId() {
@@ -597,7 +731,7 @@ async function handleTelegramSession(
       const expDate = new Date();
       expDate.setDate(expDate.getDate() + 10);
       pedido.status_pagamento = 'PAGO';
-      pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
+      refreshProductionStatusAfterAudioUpdate(pedido);
       pedido.data_expiracao_local = expDate.toISOString();
       pedido.updatedAt = new Date().toISOString();
       await savePedido(pedido);
@@ -707,7 +841,7 @@ async function handleTelegramSession(
           if (pedido) {
             pedido.url_local_servidor = attachedV1.previewUrl;
             pedido.url_referencia_externa_1 = attachedV1.referenceUrl;
-            pedido.status_producao = pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS';
+            refreshProductionStatusAfterAudioUpdate(pedido);
             pedido.updatedAt = new Date().toISOString();
             await savePedido(pedido);
           }
@@ -797,9 +931,7 @@ async function handleTelegramSession(
           pedido.url_local_servidor_2 = attachedV2.previewUrl;
           pedido.url_referencia_externa_2 = attachedV2.referenceUrl;
           const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
-          pedido.status_producao = hasBothPreviews
-            ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
-            : 'AGUARDANDO_FAIXAS';
+          refreshProductionStatusAfterAudioUpdate(pedido);
           pedido.updatedAt = new Date().toISOString();
           await savePedido(pedido);
         }
@@ -884,8 +1016,8 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
     const expDate = new Date();
     expDate.setDate(expDate.getDate() + 10);
     pedido.status_pagamento = 'PAGO';
-    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
     pedido.data_expiracao_local = expDate.toISOString();
+    refreshProductionStatusAfterAudioUpdate(pedido);
     pedido.updatedAt = new Date().toISOString();
     await savePedido(pedido);
 
@@ -988,9 +1120,7 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
       }
 
       const hasBothPreviews = Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2);
-      pedido.status_producao = hasBothPreviews
-        ? (pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS')
-        : 'AGUARDANDO_FAIXAS';
+      refreshProductionStatusAfterAudioUpdate(pedido);
       pedido.updatedAt = new Date().toISOString();
       await savePedido(pedido);
 
@@ -1333,9 +1463,9 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       pedido.letra_aprovada = pedido.letra_gerada;
       pedido.termo_aceite_assinado = true;
       pedido.termo_aceite_timestamp = new Date().toISOString();
-      pedido.status_producao = 'AGUARDANDO_FAIXAS';
-      pedido.pix_copia_e_cola = makePixCode(id);
-      pedido.pix_qr_code_url = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pedido.pix_copia_e_cola)}`;
+      pedido.status_producao = 'LETRA_APROVADA';
+      pedido.pix_copia_e_cola = null;
+      pedido.pix_qr_code_url = null;
       pedido.updatedAt = new Date().toISOString();
 
       await savePedido(pedido);
@@ -1370,6 +1500,66 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     }
   });
 
+  app.post('/api/orders/:id/create-checkout', async (req, res) => {
+    try {
+      const pedido = await getPedido(req.params.id);
+      if (!pedido) {
+        res.status(404).json({ error: 'Pedido de musica nao encontrado.' });
+        return;
+      }
+
+      const stage = resolvePendingPaymentStage(pedido);
+      if (!stage) {
+        res.status(409).json({ error: 'Esse pedido nao possui cobranca pendente.' });
+        return;
+      }
+
+      if (stage === 'final' && !hasAnyPreview(pedido)) {
+        res.status(409).json({ error: 'A previa ainda nao esta disponivel para cobrar o valor final.' });
+        return;
+      }
+
+      const checkout = await createInfinitePayCheckoutLink(req, pedido, stage);
+      res.json({
+        ...checkout,
+        stage,
+        amountCents: getChargeAmount(stage),
+        totalAmountCents: TOTAL_ORDER_AMOUNT_CENTS,
+        remainingAmountCents: stage === 'preview' ? FINAL_PAYMENT_AMOUNT_CENTS : 0,
+      });
+    } catch (error: any) {
+      console.error('Erro ao criar checkout da InfinitePay:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao criar checkout da InfinitePay.' });
+    }
+  });
+
+  app.post('/api/payments/infinitepay/webhook', async (req, res) => {
+    try {
+      const parsed = parseInfinitePayOrderNsu(req.body?.order_nsu);
+      if (!parsed) {
+        res.status(400).json({ success: false, message: 'order_nsu invalido.' });
+        return;
+      }
+
+      const pedido = await getPedido(parsed.pedidoId);
+      if (!pedido) {
+        res.status(400).json({ success: false, message: 'Pedido nao encontrado.' });
+        return;
+      }
+
+      if (parsed.stage === 'preview') {
+        await markPreviewPaymentAsConfirmed(pedido);
+      } else {
+        await markFinalPaymentAsConfirmed(pedido);
+      }
+
+      res.json({ success: true, message: null });
+    } catch (error: any) {
+      console.error('Erro no webhook da InfinitePay:', error);
+      res.status(400).json({ success: false, message: error?.message || 'Falha ao processar webhook.' });
+    }
+  });
+
   app.post('/api/payment/simulate-confirm', async (req, res) => {
     const { id } = req.body as { id: string };
     const pedido = await getPedido(id);
@@ -1378,13 +1568,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       return;
     }
 
-    const expDate = new Date();
-    expDate.setDate(expDate.getDate() + 10);
-    pedido.status_pagamento = 'PAGO';
-    pedido.status_producao = 'LIBERADO';
-    pedido.data_expiracao_local = expDate.toISOString();
-    pedido.updatedAt = new Date().toISOString();
-    await savePedido(pedido);
+    await markFinalPaymentAsConfirmed(pedido);
     res.json(pedido);
   });
 
@@ -1504,6 +1688,22 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     } catch (error: any) {
       console.error('Erro ao listar pedidos na gestao:', error);
       res.status(500).json({ error: error?.message || 'Falha ao listar pedidos.' });
+    }
+  });
+
+  app.delete('/api/admin/orders/:id', requireAdmin, async (req, res) => {
+    try {
+      const pedido = await getPedido(req.params.id);
+      if (!pedido) {
+        res.status(404).json({ error: 'Pedido nao encontrado.' });
+        return;
+      }
+
+      await deletePedido(req.params.id);
+      res.json({ ok: true });
+    } catch (error: any) {
+      console.error('Erro ao excluir pedido na gestao:', error);
+      res.status(500).json({ error: error?.message || 'Falha ao excluir pedido.' });
     }
   });
 
@@ -1671,7 +1871,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       pedido.url_local_servidor_2 = attached.url_local_servidor_2;
       pedido.url_referencia_externa_1 = attached.url_referencia_externa_1;
       pedido.url_referencia_externa_2 = attached.url_referencia_externa_2;
-      pedido.status_producao = pedido.status_pagamento === 'PAGO' ? 'LIBERADO' : 'PREVIAS_PRONTAS';
+      refreshProductionStatusAfterAudioUpdate(pedido);
       pedido.updatedAt = new Date().toISOString();
 
       await savePedido(pedido);
@@ -1692,8 +1892,8 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     const expDate = new Date();
     expDate.setDate(expDate.getDate() + 10);
     pedido.status_pagamento = 'PAGO';
-    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'LIBERADO' : pedido.status_producao;
     pedido.data_expiracao_local = expDate.toISOString();
+    refreshProductionStatusAfterAudioUpdate(pedido);
     pedido.updatedAt = new Date().toISOString();
     await savePedido(pedido);
     res.json(pedido);
@@ -1708,7 +1908,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
 
     pedido.status_pagamento = 'PENDENTE';
     pedido.data_expiracao_local = null;
-    pedido.status_producao = pedido.url_local_servidor && pedido.url_local_servidor_2 ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
+    refreshProductionStatusAfterAudioUpdate(pedido);
     pedido.updatedAt = new Date().toISOString();
     await savePedido(pedido);
     res.json(pedido);
@@ -1728,7 +1928,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     pedido.url_referencia_externa_2 = null;
     pedido.url_local_servidor = null;
     pedido.url_local_servidor_2 = null;
-    pedido.status_producao = pedido.letra_aprovada ? 'AGUARDANDO_FAIXAS' : 'AGUARDANDO_APROVACAO';
+    pedido.status_producao = pedido.letra_aprovada ? 'LETRA_APROVADA' : 'AGUARDANDO_APROVACAO';
     pedido.updatedAt = new Date().toISOString();
     await savePedido(pedido);
     res.json(pedido);

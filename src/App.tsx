@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Music, PenTool, RefreshCw, AlertCircle, Settings } from 'lucide-react';
+import { Music, PenTool, RefreshCw, AlertCircle, Settings, CheckCircle2, Clock3 } from 'lucide-react';
 
 import { TemaConfig, RespostasFormulario, PedidoMusica, DEFAULT_TEMAS } from './types';
 import ThemeSelector from './components/ThemeSelector';
@@ -13,7 +13,7 @@ import MinhasMusicas from './components/MinhasMusicas';
 import GestaoPedidos from './components/GestaoPedidos';
 import { BRANDING } from './branding';
 
-type AppView = 'inicial' | 'search' | 'admin' | 'form' | 'loading-lyrics' | 'review' | 'termo' | 'player-pagamento' | 'sucesso';
+type AppView = 'inicial' | 'search' | 'admin' | 'form' | 'loading-lyrics' | 'review' | 'termo' | 'player-pagamento' | 'sucesso' | 'payment-return';
 
 export default function App() {
   const [view, setView] = useState<AppView>('inicial');
@@ -23,6 +23,8 @@ export default function App() {
   const [uiError, setUiError] = useState<string | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [loadingLogIndex, setLoadingLogIndex] = useState(0);
+  const [paymentReturnStage, setPaymentReturnStage] = useState<'preview' | 'final' | null>(null);
+  const [paymentReturnMessage, setPaymentReturnMessage] = useState<string>('Estamos confirmando seu pagamento.');
 
   const COMPOSITION_LOGS = [
     'Tecendo memorias afetivas...',
@@ -56,6 +58,47 @@ export default function App() {
       })
       .catch((error) => {
         console.error(error);
+      });
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pedidoId = params.get('pedido');
+    const isPaymentReturn = params.get('payment_return') === '1';
+    const stage = params.get('stage') === 'final' ? 'final' : 'preview';
+    if (!pedidoId) return;
+
+    if (isPaymentReturn) {
+      setPaymentReturnStage(stage);
+      setPaymentReturnMessage(
+        stage === 'final'
+          ? 'Estamos confirmando o pagamento final da sua musica.'
+          : 'Estamos confirmando o pagamento da previa.'
+      );
+      setView('payment-return');
+    }
+
+    handleRefreshPedido(pedidoId)
+      .then((pedido) => {
+        setUiError(null);
+        if (isPaymentReturn) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        if (pedido.status_pagamento === 'PAGO') {
+          setPaymentReturnMessage('Pagamento confirmado com sucesso. Sua musica completa foi liberada.');
+          setView('sucesso');
+          return;
+        }
+        if (stage === 'preview' && pedido.status_producao !== 'LETRA_APROVADA' && pedido.status_producao !== 'AGUARDANDO_APROVACAO') {
+          setPaymentReturnMessage('Pagamento da previa confirmado. Agora voce pode acompanhar a preparacao da sua previa.');
+        }
+        setView('player-pagamento');
+      })
+      .catch((error: any) => {
+        setUiError(error?.message || 'Nao foi possivel recuperar o pedido retornado do pagamento.');
+        if (isPaymentReturn) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       });
   }, []);
 
@@ -150,7 +193,11 @@ export default function App() {
 
   const handleRefreshPedido = async (pedidoId: string, nextView?: AppView) => {
     const response = await fetch(`/api/orders/${pedidoId}`);
-    const pedido = (await response.json()) as PedidoMusica;
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error((data as any).error || 'Falha ao carregar o pedido.');
+    }
+    const pedido = data as PedidoMusica;
     setCurrentPedido(pedido);
     if (nextView) setView(nextView);
     return pedido;
@@ -262,6 +309,38 @@ export default function App() {
                     {COMPOSITION_LOGS[loadingLogIndex % COMPOSITION_LOGS.length]}
                   </motion.p>
                 </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'payment-return' && (
+            <motion.div key="payment-return" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-xl mx-auto px-6 text-center space-y-6 py-20 select-none">
+              <div className="relative inline-block mb-3">
+                <div className="w-16 h-16 rounded-full border-4 border-natural-sage/10 border-t-natural-sage animate-spin" />
+                <Clock3 className="w-6 h-6 text-natural-sage absolute inset-0 m-auto" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold font-display text-natural-dark tracking-tight">
+                  Retorno do Pagamento
+                </h3>
+                <p className="text-sm text-natural-subtext mt-2 leading-relaxed">
+                  {paymentReturnMessage}
+                </p>
+              </div>
+              <div className="bg-[#FAF8F5] p-5 border rounded-2xl border-natural-border text-left">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-natural-sage shrink-0 mt-0.5" />
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-natural-dark">
+                      {paymentReturnStage === 'final'
+                        ? 'Etapa final em verificacao'
+                        : 'Pagamento da previa em verificacao'}
+                    </p>
+                    <p className="text-xs text-natural-subtext leading-relaxed">
+                      A InfinitePay redireciona voce de volta para o site, mas a confirmacao oficial do pedido continua sendo feita pelo nosso sistema. Se o webhook ja tiver chegado, voce seguira automaticamente para a proxima etapa.
+                    </p>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}

@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { TemaConfig, RespostasFormulario } from '../types';
-import { Mic, MicOff, ArrowLeft, ArrowRight, Music, Sparkles, User, Mail, Phone } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, Mic, MicOff, Music, Phone, Sparkles, User } from 'lucide-react';
 
 interface QuestionsFormProps {
   theme: TemaConfig;
@@ -10,8 +10,18 @@ interface QuestionsFormProps {
   onSubmit: (data: RespostasFormulario, extraOptions?: { selectedGenderForRevelacao?: 'menino' | 'menina' }) => void;
 }
 
+function parseRevealBabyNames(value: string | undefined) {
+  const raw = value || '';
+  const boyMatch = raw.match(/menino\s*(?:é|e|:)\s*([^\n\r]+)/i);
+  const girlMatch = raw.match(/menina\s*(?:é|e|:)\s*([^\n\r]+)/i);
+  return {
+    menino: boyMatch?.[1]?.trim() || '',
+    menina: girlMatch?.[1]?.trim() || '',
+  };
+}
+
 export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit }: QuestionsFormProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Perguntas Tema, 2: Preferências, 3: Contato
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     theme.perguntas.filter((q) => q.isActive !== false).forEach((q) => {
@@ -19,21 +29,17 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
     });
     return initial;
   });
-
+  const [revealBabyNames, setRevealBabyNames] = useState(() => parseRevealBabyNames(initialAnswers?.p5));
   const [estiloMusical, setEstiloMusical] = useState('Romântico');
   const [provVoice, setProvVoice] = useState('indiferente');
   const [clienteEmail, setClienteEmail] = useState('');
   const [clienteWhatsapp, setClienteWhatsapp] = useState('');
-  
-  // Custom states for Chá Revelação result simulation
   const [selectedGenderForRevelacao, setSelectedGenderForRevelacao] = useState<'menino' | 'menina'>('menino');
-
-  // Speech-to-text recording tracking states
   const [recordingFieldId, setRecordingFieldId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
   const ESTILOS = [
-    'Romântico', 'Sertanejo', 'Pop', 'MPB', 'Pagode', 
+    'Romântico', 'Sertanejo', 'Pop', 'MPB', 'Pagode',
     'Forró', 'Gospel', 'Rock', 'Reggae', 'Eletrônico', 'Jazz', 'Infantil'
   ];
 
@@ -47,23 +53,30 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
     setAnswers((prev) => ({ ...prev, [fieldId]: val }));
   };
 
-  // Toggle capturing user's voice for a specific field ID
+  const handleRevealBabyNameChange = (field: 'menino' | 'menina', value: string) => {
+    setRevealBabyNames((prev) => {
+      const next = { ...prev, [field]: value };
+      setAnswers((current) => ({
+        ...current,
+        p5: `Menino é ${next.menino.trim()}\nMenina é ${next.menina.trim()}`.trim(),
+      }));
+      return next;
+    });
+  };
+
   const toggleRecording = (fieldId: string) => {
-    // If already recording this field, stop
     if (recordingFieldId === fieldId) {
       stopRecording();
       return;
     }
 
-    // Stop current if recording another
     if (recordingFieldId) {
       stopRecording();
     }
 
-    // Check platform compatibility
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Seu navegador não oferece suporte nativo à gravação de voz (Speech-to-Text). Altere para Google Chrome ou digite normalmente!');
+      alert('Seu navegador não oferece suporte nativo à gravação de voz. Use o Chrome ou digite normalmente.');
       return;
     }
 
@@ -73,28 +86,21 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
       recognition.interimResults = false;
       recognition.lang = 'pt-BR';
 
-      recognition.onstart = () => {
-        setRecordingFieldId(fieldId);
-      };
-
+      recognition.onstart = () => setRecordingFieldId(fieldId);
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript) {
           setAnswers((prev) => {
-            const currentVal = prev[fieldId] ? prev[fieldId].trim() + ' ' : '';
+            const currentVal = prev[fieldId] ? `${prev[fieldId].trim()} ` : '';
             return { ...prev, [fieldId]: currentVal + transcript };
           });
         }
       };
-
       recognition.onerror = (err: any) => {
         console.error('Erro de reconhecimento de fala:', err);
         stopRecording();
       };
-
-      recognition.onend = () => {
-        setRecordingFieldId(null);
-      };
+      recognition.onend = () => setRecordingFieldId(null);
 
       recognitionRef.current = recognition;
       recognition.start();
@@ -115,11 +121,10 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
     setRecordingFieldId(null);
   };
 
-  // Validation routines
   const isThemeQuestionsValid = () => {
     return theme.perguntas
       .filter((q) => q.isActive !== false && q.isRequired !== false)
-      .every((q) => answers[q.id] && answers[q.id].trim().length > 3);
+      .every((q) => answers[q.id] && answers[q.id].trim().length > 1);
   };
 
   const isContactValid = () => {
@@ -131,7 +136,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
   const handleNextStep = () => {
     if (step === 1) {
       if (!isThemeQuestionsValid()) {
-        alert('Por favor, preencha todos os campos do questionário para avançar com carinho!');
+        alert('Por favor, preencha todos os campos do questionário antes de avançar.');
         return;
       }
       setStep(2);
@@ -141,11 +146,8 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
   };
 
   const handlePrevStep = () => {
-    if (step === 3) {
-      setStep(2);
-    } else if (step === 2) {
-      setStep(1);
-    }
+    if (step === 3) setStep(2);
+    else if (step === 2) setStep(1);
   };
 
   const handleFinalSubmit = () => {
@@ -168,8 +170,6 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
 
   return (
     <div id="questions-form-root" className="max-w-2xl mx-auto px-4 py-8 bg-white border border-natural-border rounded-3xl shadow-xs">
-      
-      {/* Progress Top Bar */}
       <div className="flex justify-between items-center mb-8 border-b border-natural-border pb-4">
         <button
           onClick={step === 1 ? onBack : handlePrevStep}
@@ -216,45 +216,68 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
                     <span>{q.label}</span>
                     {q.isRequired !== false && <span className="text-xs text-natural-caramel font-light font-sans">* obrigatório</span>}
                   </label>
-                  
-                  <div className="relative">
-                    <textarea
-                      value={answers[q.id] || ''}
-                      onChange={(e) => handleInputChange(q.id, e.target.value)}
-                      placeholder={q.p_placeholder}
-                      rows={3}
-                      className="w-full px-4 py-3 pb-11 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white resize-none transition-all leading-relaxed font-light text-natural-dark"
-                    />
 
-                    {/* Microphone Action Trigger Button inside text area */}
-                    <button
-                      type="button"
-                      onClick={() => toggleRecording(q.id)}
-                      className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-1 text-xs border ${
-                        recordingFieldId === q.id
-                          ? 'bg-natural-dark border-natural-dark text-white animate-pulse'
-                          : 'bg-white hover:bg-natural-sage-light border-natural-border text-natural-dark'
-                      }`}
-                      title={recordingFieldId === q.id ? 'Parar gravação' : 'Gravar por voz'}
-                    >
-                      {recordingFieldId === q.id ? (
-                        <>
-                          <MicOff className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-sans font-medium">Gravando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-3.5 h-3.5 text-natural-sage" />
-                          <span className="text-[10px] font-sans font-medium text-natural-subtext">Falar</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  {theme.id === 'revelacao' && q.id === 'p5' ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-natural-subtext">Menino</span>
+                        <input
+                          type="text"
+                          value={revealBabyNames.menino}
+                          onChange={(e) => handleRevealBabyNameChange('menino', e.target.value)}
+                          placeholder="Ex: Azael"
+                          className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white transition-all text-natural-dark"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-natural-subtext">Menina</span>
+                        <input
+                          type="text"
+                          value={revealBabyNames.menina}
+                          onChange={(e) => handleRevealBabyNameChange('menina', e.target.value)}
+                          placeholder="Ex: Stella"
+                          className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white transition-all text-natural-dark"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <textarea
+                        value={answers[q.id] || ''}
+                        onChange={(e) => handleInputChange(q.id, e.target.value)}
+                        placeholder={q.p_placeholder}
+                        rows={3}
+                        className="w-full px-4 py-3 pb-11 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white resize-none transition-all leading-relaxed font-light text-natural-dark"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => toggleRecording(q.id)}
+                        className={`absolute bottom-3 right-3 p-2 rounded-lg transition-all duration-200 cursor-pointer flex items-center gap-1 text-xs border ${
+                          recordingFieldId === q.id
+                            ? 'bg-natural-dark border-natural-dark text-white animate-pulse'
+                            : 'bg-white hover:bg-natural-sage-light border-natural-border text-natural-dark'
+                        }`}
+                        title={recordingFieldId === q.id ? 'Parar gravação' : 'Gravar por voz'}
+                      >
+                        {recordingFieldId === q.id ? (
+                          <>
+                            <MicOff className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-sans font-medium">Gravando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-3.5 h-3.5 text-natural-sage" />
+                            <span className="text-[10px] font-sans font-medium text-natural-subtext">Falar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            {/* Special simulation selector for Chá Revelação baby result */}
             {theme.id === 'revelacao' && (
               <div className="p-4 bg-natural-sage-light border border-natural-border rounded-2xl md:p-5 mt-6 space-y-3">
                 <div className="flex items-center gap-1.5 text-natural-dark font-medium text-sm">
@@ -262,7 +285,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
                   <span>Simulador de Revelação para Visualização</span>
                 </div>
                 <p className="text-xs text-natural-subtext leading-relaxed font-light">
-                  Como você está no ambiente de visualização, selecione abaixo qual será o sexo descoberto e revelado do bebê para compormos a letra com o nome certo!
+                  Selecione qual será o sexo revelado no chá para compormos a letra com o nome correto.
                 </p>
                 <div className="flex gap-4">
                   <button
@@ -274,7 +297,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
                         : 'bg-white border-natural-border hover:bg-natural-sage-light text-natural-dark'
                     }`}
                   >
-                    👦 Menino (Téo)
+                    👦 Menino ({revealBabyNames.menino || 'sem nome'})
                   </button>
                   <button
                     type="button"
@@ -285,7 +308,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
                         : 'bg-white border-natural-border hover:bg-natural-sage-light text-natural-dark'
                     }`}
                   >
-                    👧 Menina (Lívia)
+                    👧 Menina ({revealBabyNames.menina || 'sem nome'})
                   </button>
                 </div>
               </div>
@@ -319,7 +342,6 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
               </p>
             </div>
 
-            {/* Estilos Grid Selector */}
             <div className="space-y-4">
               <label className="text-sm font-semibold text-natural-dark">
                 Qual estilo combina mais? *
@@ -343,12 +365,11 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
               </div>
             </div>
 
-            {/* Voz Grid Selector */}
             <div className="space-y-4 pt-2">
               <label className="text-sm font-semibold text-natural-dark block">
                 Qual timbre de voz é o ideal?
               </label>
-              
+
               <div className="space-y-3">
                 {VOZES.map((v) => (
                   <div
@@ -395,7 +416,7 @@ export default function QuestionsForm({ theme, initialAnswers, onBack, onSubmit 
             <div>
               <User className="w-8 h-8 text-natural-sage mb-2" />
               <h2 className="text-2xl font-bold font-display text-natural-dark leading-tight">
-                Dados de Contatos Coletados
+                Dados de Contato
               </h2>
               <p className="text-sm text-natural-subtext mt-1">
                 Necessários para localizar suas canções ou enviar alertas importantes de conclusão.

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Play, Pause, Copy, Check, QrCode, CreditCard, RefreshCw, AlertCircle, Volume2, MessageCircle } from 'lucide-react';
+import { Play, Pause, CreditCard, RefreshCw, AlertCircle, Volume2, MessageCircle, CheckCircle2 } from 'lucide-react';
 import { PedidoMusica } from '../types';
 
 interface PlayerPagamentoProps {
@@ -9,12 +9,21 @@ interface PlayerPagamentoProps {
   onReload: () => void | Promise<void>;
 }
 
+function isPreviewUnlocked(pedido: PedidoMusica) {
+  return pedido.status_producao !== 'LETRA_APROVADA' && pedido.status_producao !== 'AGUARDANDO_APROVACAO';
+}
+
 export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: PlayerPagamentoProps) {
   const hasV1 = Boolean(pedido.url_local_servidor);
   const hasV2 = Boolean(pedido.url_local_servidor_2);
   const hasPreviews = hasV1 || hasV2;
   const hasBothPreviews = hasV1 && hasV2;
-  const [copied, setCopied] = useState(false);
+  const previewUnlocked = isPreviewUnlocked(pedido);
+  const isFullyPaid = pedido.status_pagamento === 'PAGO';
+  const awaitingPreviewPayment = !previewUnlocked;
+  const awaitingPreviewProduction = previewUnlocked && !hasPreviews && !isFullyPaid;
+  const awaitingFinalPayment = previewUnlocked && hasPreviews && !isFullyPaid;
+
   const [activeVersion, setActiveVersion] = useState<'v1' | 'v2'>(hasV1 ? 'v1' : 'v2');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -22,9 +31,8 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
   const [whatsAppLink, setWhatsAppLink] = useState<string | null>(null);
   const [whatsAppNumber, setWhatsAppNumber] = useState<string | null>(null);
   const [whatsAppError, setWhatsAppError] = useState<string | null>(null);
-  const [proofUploading, setProofUploading] = useState(false);
-  const [proofMessage, setProofMessage] = useState<string | null>(null);
-  const [selectedProofFile, setSelectedProofFile] = useState<File | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -38,7 +46,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
   }, [pedido, onPaymentSuccess]);
 
   useEffect(() => {
-    if (!hasPreviews) return;
+    if (!previewUnlocked || !hasPreviews) return;
     if (audioRef.current) audioRef.current.pause();
 
     const previewUrl = activeVersion === 'v1' ? pedido.url_local_servidor! : pedido.url_local_servidor_2!;
@@ -57,18 +65,10 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
     }
 
     return () => audio.pause();
-  }, [activeVersion, pedido.url_local_servidor, pedido.url_local_servidor_2, hasPreviews]);
+  }, [activeVersion, pedido.url_local_servidor, pedido.url_local_servidor_2, hasPreviews, previewUnlocked]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!hasPreviews) {
-      setWhatsAppLink(null);
-      setWhatsAppNumber(null);
-      setWhatsAppError(null);
-      return () => {
-        cancelled = true;
-      };
-    }
 
     async function loadWhatsAppLink() {
       try {
@@ -91,7 +91,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
     return () => {
       cancelled = true;
     };
-  }, [pedido.id, hasPreviews]);
+  }, [pedido.id]);
 
   function togglePlay() {
     if (!audioRef.current) return;
@@ -107,13 +107,6 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
     if (!audioRef.current) return;
     audioRef.current.currentTime = seconds;
     setCurrentTime(seconds);
-  }
-
-  function handleCopyPix() {
-    if (!pedido.pix_copia_e_cola) return;
-    navigator.clipboard.writeText(pedido.pix_copia_e_cola);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   function openWhatsApp() {
@@ -138,32 +131,22 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
     return value;
   }
 
-  async function uploadProof(file: File) {
-    setProofUploading(true);
-    setProofMessage(null);
+  async function openInfinitePayCheckout() {
+    setCheckoutLoading(true);
+    setCheckoutError(null);
     try {
-      const response = await fetch(`/api/orders/${pedido.id}/upload-proof`, {
+      const response = await fetch(`/api/orders/${pedido.id}/create-checkout`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'x-file-name': encodeURIComponent(file.name),
-        },
-        body: await file.arrayBuffer(),
       });
-
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Falha ao enviar comprovante.');
+        throw new Error(data.error || 'Falha ao criar checkout.');
       }
-
-      setProofMessage(data.telegramSent
-        ? 'Comprovante enviado. Nossa equipe recebeu a notificação no Telegram.'
-        : 'Comprovante salvo com sucesso.');
-      await onReload();
+      window.location.href = data.checkoutUrl;
     } catch (err: any) {
-      setProofMessage(err.message || 'Falha ao enviar comprovante.');
+      setCheckoutError(err.message || 'Falha ao iniciar o pagamento.');
     } finally {
-      setProofUploading(false);
+      setCheckoutLoading(false);
     }
   }
 
@@ -175,28 +158,35 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
           transition={{ repeat: Infinity, duration: 2 }}
           className="inline-flex items-center gap-1.5 px-3 py-1 bg-natural-sage/10 text-natural-sage rounded-full text-xs font-semibold uppercase tracking-wider mb-2"
         >
-          <Volume2 className="w-3.5 h-3.5" /> {hasPreviews ? 'Prévia Disponível' : 'Produção Manual em Andamento'}
+          <Volume2 className="w-3.5 h-3.5" />
+          {awaitingPreviewPayment ? 'Desbloqueio da previa' : hasPreviews ? 'Previa disponivel' : 'Producao em andamento'}
         </motion.span>
         <h2 className="text-3xl font-bold font-display text-natural-dark tracking-tight">
-          {hasPreviews ? 'Ouça uma Prévia da Sua Canção' : 'Sua Letra já Foi Enviada para Produção'}
+          {awaitingPreviewPayment
+            ? 'Libere a Previa da Sua Cancao'
+            : awaitingPreviewProduction
+              ? 'Pagamento da Previa Confirmado'
+              : 'OuÃ§a uma Previa da Sua Cancao'}
         </h2>
-        <p className="text-sm text-natural-subtext max-w-md mx-auto font-light mt-1 pl-1">
-          {hasPreviews
-            ? (hasBothPreviews
-              ? 'As duas prévias já estão prontas. Se gostar, envie o comprovante no WhatsApp e aguarde a liberação manual do download.'
-              : 'Uma prévia já está pronta. Assim que a outra faixa for anexada ela aparecerá aqui automaticamente.')
-            : 'Sua letra aprovada já pode ser produzida manualmente. Assim que as faixas forem anexadas, as prévias aparecerão aqui automaticamente.'}
+        <p className="text-sm text-natural-subtext max-w-xl mx-auto font-light mt-1 pl-1">
+          {awaitingPreviewPayment
+            ? 'Apos aprovar a letra, voce paga R$ 2,00 para desbloquear a previa. Esse valor ja esta incluso no total de R$ 19,99.'
+            : awaitingPreviewProduction
+              ? 'Seu pagamento de R$ 2,00 ja foi confirmado. Agora nossa equipe esta preparando a previa para voce ouvir antes de pagar o restante.'
+              : awaitingFinalPayment
+                ? 'A previa ja esta pronta. Se gostar do resultado, pague os R$ 17,99 restantes para liberar a musica completa.'
+                : 'Pagamento confirmado.'}
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <div className="lg:col-span-7 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs space-y-6">
-          {hasPreviews ? (
+          {previewUnlocked && hasPreviews ? (
             <>
               {hasV1 && hasV2 && (
                 <div className="flex gap-3 bg-natural-sage-light p-1 border border-natural-border rounded-xl">
-                  <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versão 01</button>
-                  <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versão 02</button>
+                  <button type="button" onClick={() => { setActiveVersion('v1'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v1' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 01</button>
+                  <button type="button" onClick={() => { setActiveVersion('v2'); setIsPlaying(false); setCurrentTime(0); }} className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-xs border uppercase tracking-wider transition-all cursor-pointer ${activeVersion === 'v2' ? 'bg-white border-natural-border text-natural-dark shadow-3xs' : 'bg-transparent border-transparent text-natural-subtext'}`}>Versao 02</button>
                 </div>
               )}
 
@@ -207,7 +197,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
                   </div>
                 </div>
                 <span className="text-xs uppercase tracking-widest text-natural-subtext font-bold mt-6">
-                  REPRODUZINDO PRÉVIA {activeVersion === 'v1' ? 'V1' : 'V2'} (ATÉ 1 MINUTO)
+                  REPRODUZINDO PREVIA {activeVersion === 'v1' ? 'V1' : 'V2'} (ATE 1 MINUTO)
                 </span>
               </div>
 
@@ -239,9 +229,15 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-natural-sage shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-natural-dark">Aguardando anexar as duas faixas</p>
+                  <p className="text-sm font-semibold text-natural-dark">
+                    {awaitingPreviewPayment
+                      ? 'Primeiro passo: desbloquear a previa'
+                      : 'Aguardando a previa ficar pronta'}
+                  </p>
                   <p className="text-sm text-natural-subtext mt-1">
-                    Sua letra aprovada já está pronta. Nossa equipe vai produzir a música manualmente e anexar as faixas neste pedido.
+                    {awaitingPreviewPayment
+                      ? 'Assim que o pagamento de R$ 2,00 for confirmado, a previa sera liberada para voce ouvir. Esse valor sera abatido do total de R$ 19,99.'
+                      : 'Sua previa esta sendo preparada. Assim que as faixas forem anexadas, voce podera ouvi-las aqui e decidir se quer pagar o restante.'}
                   </p>
                 </div>
               </div>
@@ -254,7 +250,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
           <div className="p-4 bg-natural-sage-light rounded-xl flex items-start gap-2 border border-natural-border">
             <AlertCircle className="w-4 h-4 text-natural-sage shrink-0 mt-0.5" />
             <p className="text-[11px] text-natural-text leading-normal font-light">
-              <strong>Nota:</strong> As prévias têm no máximo 1 minuto. O download completo só é liberado após confirmação manual do pagamento.
+              <strong>Regra do pagamento:</strong> primeiro voce paga <strong>R$ 2,00</strong> para ouvir a previa. Se gostar, paga apenas os <strong>R$ 17,99</strong> restantes. O total continua sendo <strong>R$ 19,99</strong>.
             </p>
           </div>
         </div>
@@ -262,81 +258,83 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
         <div className="lg:col-span-5 bg-white border border-natural-border rounded-3xl p-6 md:p-8 shadow-xs flex flex-col justify-between h-full">
           <div>
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-natural-subtext mb-4 border-b border-natural-border pb-3">
-              <CreditCard className="w-4 h-4 text-natural-sage" /> Pagamento e Liberação Manual
+              <CreditCard className="w-4 h-4 text-natural-sage" /> Pagamento em duas etapas
             </div>
-            <div className="mb-6">
-              <span className="text-natural-subtext font-light text-xs uppercase block tracking-wider">Adesão Promocional</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-4xl font-extrabold font-display text-natural-dark tracking-tight">R$ 19,99</span>
+
+            <div className="space-y-4 mb-6">
+              <div className="rounded-2xl border border-natural-border bg-[#FAF8F5] p-4">
+                <p className="text-[11px] uppercase tracking-wider text-natural-subtext font-semibold">Etapa 1</p>
+                <p className="text-xl font-extrabold font-display text-natural-dark mt-1">R$ 2,00</p>
+                <p className="text-[11px] text-natural-subtext mt-1">Libera a previa. Esse valor ja esta incluso no total.</p>
+                {previewUnlocked && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EBF5EE] px-3 py-1 text-[11px] font-semibold text-[#1B5E20]">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Pago
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-natural-border bg-[#FAF8F5] p-4">
+                <p className="text-[11px] uppercase tracking-wider text-natural-subtext font-semibold">Etapa 2</p>
+                <p className="text-xl font-extrabold font-display text-natural-dark mt-1">R$ 17,99</p>
+                <p className="text-[11px] text-natural-subtext mt-1">Complemento final para liberar a musica completa.</p>
+                {isFullyPaid && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#EBF5EE] px-3 py-1 text-[11px] font-semibold text-[#1B5E20]">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Pago
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-col items-center p-4 border border-natural-border bg-natural-sage-light rounded-2xl mb-5 space-y-4">
-              {pedido.pix_qr_code_url ? (
-                <img src={pedido.pix_qr_code_url} alt="PIX QR Code" className="w-40 h-40 border border-natural-border bg-white p-1 rounded-xl shadow-3xs" />
-              ) : (
-                <div className="w-40 h-40 rounded-xl bg-neutral-200 animate-pulse flex items-center justify-center">
-                  <QrCode className="w-10 h-10 text-neutral-400" />
-                </div>
-              )}
-              <div className="text-center">
-                <h4 className="text-xs font-bold text-natural-dark uppercase tracking-widest">Envie o comprovante pelo WhatsApp</h4>
-                <p className="text-[10px] text-natural-subtext font-light mt-1">
-                  O pagamento e a liberação das faixas completas são confirmados manualmente.
-                </p>
-              </div>
-            </div>
-
-            <button type="button" onClick={handleCopyPix} className="w-full py-3 px-4 bg-natural-sage-light text-natural-dark text-xs font-semibold rounded-xl flex items-center justify-center gap-2 border border-natural-border cursor-pointer">
-              {copied ? <><Check className="w-4 h-4 text-natural-sage" /> Código Copiado!</> : <><Copy className="w-4 h-4 text-natural-subtext" /> Copiar Código PIX</>}
-            </button>
-
-            <label className="block mt-3">
-              <span className="text-[11px] text-natural-subtext font-semibold block mb-2">Anexar comprovante</span>
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.pdf,image/*,application/pdf"
-                disabled={proofUploading}
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  setSelectedProofFile(file);
-                  setProofMessage(null);
-                }}
-                className="w-full px-4 py-3 bg-[#FAF8F5] border border-natural-border rounded-xl text-xs"
-              />
-            </label>
-
-            {selectedProofFile && (
-              <p className="mt-2 text-[11px] text-natural-subtext">
-                Arquivo selecionado: {selectedProofFile.name}
+            <div className="rounded-2xl border border-natural-border bg-natural-sage-light px-4 py-4 mb-5">
+              <h4 className="text-xs font-bold text-natural-dark uppercase tracking-widest">
+                {awaitingPreviewPayment
+                  ? 'Liberar previa'
+                  : awaitingPreviewProduction
+                    ? 'Pagamento confirmado'
+                    : awaitingFinalPayment
+                      ? 'Liberar versao completa'
+                      : 'Pedido concluido'}
+              </h4>
+              <p className="text-[11px] text-natural-subtext font-light mt-2">
+                {awaitingPreviewPayment
+                  ? 'Clique abaixo para abrir o checkout da InfinitePay e pagar R$ 2,00.'
+                  : awaitingPreviewProduction
+                    ? 'Agora e so aguardar a previa ser anexada. Assim que ela estiver pronta, o botao do pagamento final aparecera.'
+                    : awaitingFinalPayment
+                      ? 'A previa esta disponivel. Se voce aprovar o resultado, pague R$ 17,99 para receber a musica completa.'
+                      : 'Seu pedido ja foi pago integralmente.'}
               </p>
+            </div>
+
+            {!isFullyPaid && !awaitingPreviewProduction && (
+              <button
+                type="button"
+                disabled={checkoutLoading}
+                onClick={openInfinitePayCheckout}
+                className="w-full py-3 px-4 bg-natural-sage text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+              >
+                <CreditCard className="w-4 h-4" />
+                {checkoutLoading
+                  ? 'Abrindo checkout...'
+                  : awaitingPreviewPayment
+                    ? 'Pagar R$ 2,00 para ouvir a previa'
+                    : 'Pagar R$ 17,99 para liberar a musica'}
+              </button>
             )}
 
-            {pedido.comprovante_nome_arquivo && (
-              <p className="mt-2 text-[11px] text-natural-subtext">
-                Último comprovante enviado: {pedido.comprovante_nome_arquivo}
-              </p>
+            {checkoutError && (
+              <div className="mt-3 rounded-2xl border border-[#E7C7AF] bg-[#FFF7F2] px-4 py-3 text-[11px] text-[#9A5B33]">
+                {checkoutError}
+              </div>
             )}
 
             <button
               type="button"
-              disabled={proofUploading || !selectedProofFile}
-              onClick={() => {
-                if (!selectedProofFile) return;
-                uploadProof(selectedProofFile)
-                  .then(() => setSelectedProofFile(null))
-                  .catch(() => undefined);
-              }}
-              className="w-full mt-3 py-3 px-4 bg-natural-sage text-white text-xs font-semibold rounded-xl disabled:opacity-60 cursor-pointer"
+              onClick={() => onReload()}
+              className="w-full mt-3 py-3 px-4 bg-white border border-natural-border rounded-xl text-xs font-semibold text-natural-dark flex items-center justify-center gap-2 cursor-pointer"
             >
-              {proofUploading ? 'Enviando comprovante...' : 'Enviar comprovante'}
+              <RefreshCw className="w-4 h-4" /> Atualizar status do pedido
             </button>
-
-            {proofMessage && (
-              <div className="mt-3 rounded-2xl border border-natural-border bg-[#FAF8F5] px-4 py-3 text-[11px] text-natural-subtext">
-                {proofMessage}
-              </div>
-            )}
 
             {(whatsAppLink || whatsAppError) && (
               <div className="mt-4 pt-4 border-t border-natural-border">
@@ -346,7 +344,7 @@ export default function PlayerPagamento({ pedido, onPaymentSuccess, onReload }: 
                   disabled={!whatsAppLink}
                   className="w-full py-3 px-4 bg-[#25D366] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
                 >
-                  <MessageCircle className="w-4 h-4" /> Enviar pelo WhatsApp
+                  <MessageCircle className="w-4 h-4" /> Falar com o atendimento
                 </button>
                 {whatsAppNumber && (
                   <p className="mt-2 text-[11px] text-natural-subtext text-center">

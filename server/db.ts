@@ -289,3 +289,27 @@ export async function listAllPedidos(): Promise<PedidoMusica[]> {
 
   return pedidos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
+
+export async function deletePedido(id: string): Promise<void> {
+  if (isSupabaseConfigured()) {
+    const supabase = getSupabaseClient();
+
+    const { error: deleteAnswersError } = await supabase.from('pedido_respostas').delete().eq('pedido_id', id);
+    if (deleteAnswersError) {
+      throw new Error(`Erro ao excluir respostas do pedido no Supabase: ${deleteAnswersError.message}`);
+    }
+
+    const { error: deleteOrderError } = await supabase.from(ORDERS_TABLE).delete().eq('id', id);
+    if (deleteOrderError) {
+      throw new Error(`Erro ao excluir pedido no Supabase: ${deleteOrderError.message}`);
+    }
+
+    return;
+  }
+
+  ensureLocalPedidosDir();
+  const filePath = path.join(PEDIDOS_DIR, `${id}.json`);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+}
