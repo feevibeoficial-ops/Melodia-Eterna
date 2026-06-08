@@ -820,7 +820,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
             const themeConfig = getThemeConfig(order.respostas.temaId);
             const composeInteraction = getComposeInteraction(order);
             const orderedQuestions = [...(themeConfig?.perguntas || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-            const extraAnswers = Object.entries(order.respostas.respostas || {}).filter(([questionId]) => !orderedQuestions.some((question) => question.id === questionId));
+            const extraAnswers = Object.entries(order.respostas.respostas || {}).filter(([questionId]) => (
+              !questionId.startsWith('_') && !orderedQuestions.some((question) => question.id === questionId)
+            ));
             const answersExpanded = Boolean(expandedPanels[`order-answers:${order.id}`]);
             const lyricsExpanded = Boolean(expandedPanels[`order-lyrics:${order.id}`]);
             const promptExpanded = Boolean(expandedPanels[`order-prompt:${order.id}`]);
@@ -838,6 +840,9 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                       <p className="text-sm text-natural-dark">{order.cliente_email}</p>
                       <p className="text-sm text-natural-subtext">{order.cliente_whatsapp}</p>
                       <p className="text-xs text-natural-subtext">Tema: {themeConfig?.titulo || order.respostas.temaId} | Estilo: {order.respostas.estiloMusical || 'não informado'}</p>
+                      {(order.respostas.descricaoMusical || order.respostas.respostas?._descricao_musical) && (
+                        <p className="text-xs text-natural-subtext">Arranjo: {order.respostas.descricaoMusical || order.respostas.respostas?._descricao_musical}</p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-4 lg:gap-6">

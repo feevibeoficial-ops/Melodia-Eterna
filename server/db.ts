@@ -39,6 +39,7 @@ function normalizePedido(parsed: Partial<PedidoMusica>): PedidoMusica {
       respostas: {},
       estiloMusical: '',
       provVoice: '',
+      descricaoMusical: '',
       clienteEmail: parsed.cliente_email || '',
       clienteWhatsapp: parsed.cliente_whatsapp || '',
     },
@@ -140,6 +141,7 @@ export async function getPedido(id: string): Promise<PedidoMusica | null> {
         respostas,
         estiloMusical: data.estilo_musical || '',
         provVoice: data.prov_voice || '',
+        descricaoMusical: respostas._descricao_musical || '',
         clienteEmail: data.cliente_email || '',
         clienteWhatsapp: data.cliente_whatsapp || '',
       },
@@ -241,39 +243,43 @@ export async function listAllPedidos(): Promise<PedidoMusica[]> {
       answersByPedido.set((row as any).pedido_id, current);
     }
 
-    return (data || []).map((row: any) => normalizePedido({
-      id: row.id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      cliente_email: row.cliente_email,
-      cliente_whatsapp: row.cliente_whatsapp,
-      respostas: {
-        temaId: row.tema_id,
-        respostas: answersByPedido.get(row.id) || {},
-        estiloMusical: row.estilo_musical || '',
-        provVoice: row.prov_voice || '',
-        clienteEmail: row.cliente_email || '',
-        clienteWhatsapp: row.cliente_whatsapp || '',
-      },
-      letra_gerada: row.letra_gerada,
-      letra_aprovada: row.letra_aprovada,
-      termo_aceite_assinado: row.termo_aceite_assinado,
-      termo_aceite_timestamp: row.termo_aceite_timestamp,
-      status_pagamento: row.status_pagamento,
-      status_producao: row.status_producao,
-      pix_copia_e_cola: row.pix_copia_e_cola,
-      pix_qr_code_url: row.pix_qr_code_url,
-      url_original_suno: row.url_original_suno,
-      url_original_suno_2: row.url_original_suno_2,
-      url_referencia_externa_1: row.url_referencia_externa_1,
-      url_referencia_externa_2: row.url_referencia_externa_2,
-      url_local_servidor: row.url_local_servidor,
-      url_local_servidor_2: row.url_local_servidor_2,
-      comprovante_url_local: row.comprovante_url_local,
-      comprovante_nome_arquivo: row.comprovante_nome_arquivo,
-      data_expiracao_local: row.data_expiracao_local,
-      ai_interactions: row.ai_interactions || [],
-    } as Partial<PedidoMusica>));
+    return (data || []).map((row: any) => {
+      const respostas = answersByPedido.get(row.id) || {};
+      return normalizePedido({
+        id: row.id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        cliente_email: row.cliente_email,
+        cliente_whatsapp: row.cliente_whatsapp,
+        respostas: {
+          temaId: row.tema_id,
+          respostas,
+          estiloMusical: row.estilo_musical || '',
+          provVoice: row.prov_voice || '',
+          descricaoMusical: respostas._descricao_musical || '',
+          clienteEmail: row.cliente_email || '',
+          clienteWhatsapp: row.cliente_whatsapp || '',
+        },
+        letra_gerada: row.letra_gerada,
+        letra_aprovada: row.letra_aprovada,
+        termo_aceite_assinado: row.termo_aceite_assinado,
+        termo_aceite_timestamp: row.termo_aceite_timestamp,
+        status_pagamento: row.status_pagamento,
+        status_producao: row.status_producao,
+        pix_copia_e_cola: row.pix_copia_e_cola,
+        pix_qr_code_url: row.pix_qr_code_url,
+        url_original_suno: row.url_original_suno,
+        url_original_suno_2: row.url_original_suno_2,
+        url_referencia_externa_1: row.url_referencia_externa_1,
+        url_referencia_externa_2: row.url_referencia_externa_2,
+        url_local_servidor: row.url_local_servidor,
+        url_local_servidor_2: row.url_local_servidor_2,
+        comprovante_url_local: row.comprovante_url_local,
+        comprovante_nome_arquivo: row.comprovante_nome_arquivo,
+        data_expiracao_local: row.data_expiracao_local,
+        ai_interactions: row.ai_interactions || [],
+      } as Partial<PedidoMusica>);
+    });
   }
 
   const files = listLocalPedidoFiles();

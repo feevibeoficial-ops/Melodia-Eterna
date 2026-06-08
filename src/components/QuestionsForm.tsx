@@ -62,6 +62,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   const [revealBabyNames, setRevealBabyNames] = useState(() => parseRevealBabyNames(initialData?.respostas?.p5));
   const [estiloMusical, setEstiloMusical] = useState(initialData?.estiloMusical || 'Romântico');
   const [provVoice, setProvVoice] = useState(initialData?.provVoice || 'indiferente');
+  const [descricaoMusical, setDescricaoMusical] = useState(initialData?.descricaoMusical || initialData?.respostas?._descricao_musical || '');
   const [clienteEmail, setClienteEmail] = useState(initialData?.clienteEmail || '');
   const [clienteWhatsapp, setClienteWhatsapp] = useState(formatBrazilianWhatsApp(initialData?.clienteWhatsapp || ''));
   const [selectedGenderForRevelacao, setSelectedGenderForRevelacao] = useState<'menino' | 'menina'>(initialSelectedGenderForRevelacao || 'menino');
@@ -208,9 +209,13 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
     const payload: RespostasFormulario = {
       temaId: theme.id,
-      respostas: answers,
+      respostas: {
+        ...answers,
+        ...(descricaoMusical.trim() ? { _descricao_musical: descricaoMusical.trim() } : {}),
+      },
       estiloMusical,
       provVoice,
+      descricaoMusical: descricaoMusical.trim(),
       clienteEmail,
       clienteWhatsapp: normalizeBrazilianWhatsApp(clienteWhatsapp),
     };
@@ -466,6 +471,22 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <label className="text-sm font-semibold text-natural-dark block">
+                Quer descrever o arranjo da música? <span className="text-natural-subtext font-normal">(opcional)</span>
+              </label>
+              <textarea
+                value={descricaoMusical}
+                onChange={(e) => setDescricaoMusical(e.target.value)}
+                placeholder="Ex: voz e violão, sem banda; voz e piano, sem bateria; algo mais acústico e emocionante"
+                rows={3}
+                className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white resize-none transition-all leading-relaxed font-light text-natural-dark"
+              />
+              <p className="text-xs text-natural-subtext font-light">
+                Use esse campo para indicar instrumentos, clima e restrições de produção, como “sem banda” ou “mais acústico”.
+              </p>
             </div>
 
             <button

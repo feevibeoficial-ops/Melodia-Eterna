@@ -16,6 +16,7 @@ Sua missao e transformar todo o conteudo enviado em uma musica completa, usando 
 
 Estilo musical desejado: {{estilo_musical}}
 Voz preferida: {{voz_preferida}}
+Descricao de arranjo/producao desejada: {{descricao_musical}}
 
 DIRETRIZES OBRIGATORIAS:
 1. Transforme TODO o texto enviado em musica.
@@ -68,6 +69,7 @@ Sua missao e criar a letra de uma musica altamente emocionante e personalizada p
 
 Estilo musical desejado: {{estilo_musical}}
 Voz preferida: {{voz_preferida}}
+Descricao de arranjo/producao desejada: {{descricao_musical}}
 
 DIRETRIZES OBRIGATORIAS:
 1. Transforme TODO o texto enviado em musica, sem inventar fatos e sem alterar o sentido da historia.
@@ -251,12 +253,17 @@ async function buildRespostasCliente(resp: RespostasFormulario, selectedGenderFo
   const theme = themes.find((item) => item.id === resp.temaId);
   const linhas = [
     `Tema selecionado: ${theme?.titulo || resp.temaId}`,
-    ...Object.entries(resp.respostas).map(([questionId, answer]) => {
+    ...Object.entries(resp.respostas).filter(([questionId]) => !questionId.startsWith('_')).map(([questionId, answer]) => {
       const question = theme?.perguntas.find((item) => item.id === questionId);
       const label = question?.label || questionId;
       return `${label}: ${answer}`;
     }),
   ];
+
+  const descricaoMusical = resp.descricaoMusical?.trim() || resp.respostas._descricao_musical?.trim();
+  if (descricaoMusical) {
+    linhas.push(`Descrição de arranjo/produção desejada: ${descricaoMusical}`);
+  }
 
   if (resp.temaId === 'revelacao') {
     linhas.push(`Sexo revelado no chá: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}`);
@@ -276,6 +283,7 @@ export async function buildComposePrompt(resp: RespostasFormulario, selectedGend
     respostas_cliente: await buildRespostasCliente(resp, selectedGenderForRevelacao),
     estilo_musical: resp.estiloMusical,
     voz_preferida: resp.provVoice,
+    descricao_musical: resp.descricaoMusical?.trim() || resp.respostas._descricao_musical?.trim() || 'Nao informado',
     nome_bebe_revelacao: babyName,
     sexo_bebe_revelacao: babyGender,
     revelacao_regra: resp.temaId === 'revelacao'
@@ -301,6 +309,7 @@ export async function buildRefinePrompt(
   return applyTemplate(promptTemplate?.refineTemplate || DEFAULT_REFINE_TEMPLATE, {
     feedback_usuario: feedbackUsuario,
     letra_anterior: letraAnterior,
+    descricao_musical: resp.descricaoMusical?.trim() || resp.respostas._descricao_musical?.trim() || 'Nao informado',
     nome_bebe_revelacao: babyName,
     sexo_bebe_revelacao: babyGender,
     revelacao_refine_regra: resp.temaId === 'revelacao'

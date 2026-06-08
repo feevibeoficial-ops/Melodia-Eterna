@@ -38,6 +38,7 @@ export interface RespostasFormulario {
   respostas: Record<string, string>;
   estiloMusical: string;
   provVoice: string;
+  descricaoMusical?: string;
   clienteEmail: string;
   clienteWhatsapp: string;
 }
