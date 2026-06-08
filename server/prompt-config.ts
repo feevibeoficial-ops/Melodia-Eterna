@@ -32,10 +32,11 @@ DIRETRIZES OBRIGATORIAS:
 12. Trate temas sensiveis com respeito, sutileza e foco em emocao, aprendizado, superacao e sentimento atual.
 13. Evite totalmente rimas forcadas. Use rimas apenas quando forem naturais.
 14. Nao jogue palavras apenas para rimar.
-15. Use obrigatoriamente marcacoes estruturais na letra com blocos como [Verso 1], [Verso 2], [Ponte] e [Refrao].
-16. O [Refrao] deve aparecer pelo menos 2 vezes ao longo da musica.
-17. O [Refrao] deve resumir o sentimento principal da historia, ter impacto emocional, ser facil de cantar e memoravel.
-18. Adapte o ritmo e a atmosfera ao genero "{{estilo_musical}}".
+15. Use obrigatoriamente marcacoes estruturais exatamente nesta ordem: [Intro], [Verso 1], [Refrao], [Instrumental], [Verso 2], [Refrao], [Ponte], [Refrao].
+16. Nao use outros blocos alem desses e nao altere a ordem.
+17. O [Refrao] deve aparecer 3 vezes ao longo da musica, repetido textualmente ou com variacao minima quando necessario para soar natural.
+18. O [Refrao] deve resumir o sentimento principal da historia, ter impacto emocional, ser facil de cantar e memoravel.
+19. Adapte o ritmo e a atmosfera ao genero "{{estilo_musical}}".
 {{revelacao_regra}}
 
 Escreva apenas a letra da musica, com as marcacoes estruturais, sem comentarios extras, sem explicacoes e sem observacoes fora da letra.`;
@@ -53,8 +54,8 @@ LETRA ATUAL:
 DIRETRIZES:
 1. Reescreva apenas o necessario para atender ao feedback, preservando o que ja funciona.
 2. Mantenha a historia, a perspectiva em primeira pessoa e a conexao emocional entre os versos.
-3. Preserve a estrutura marcada da musica, incluindo [Verso], [Ponte] e [Refrao] quando existirem.
-4. Preserve o [Refrao] como ponto central, forte, memoravel e repetido ao longo da musica.
+3. Preserve ou reorganize a estrutura marcada exatamente nesta ordem: [Intro], [Verso 1], [Refrao], [Instrumental], [Verso 2], [Refrao], [Ponte], [Refrao].
+4. Preserve o [Refrao] como ponto central, forte, memoravel e repetido 3 vezes ao longo da musica.
 5. Evite rimas forcadas e mantenha a letra cantavel.
 {{revelacao_refine_regra}}
 
@@ -73,16 +74,20 @@ DIRETRIZES OBRIGATORIAS:
 2. Organize a narrativa com comeco, desenvolvimento, crescimento de expectativa, grande revelacao e final emocional.
 3. Use linguagem simples, humana, delicada, familiar e cantavel.
 4. A letra deve ser longa o suficiente para uma musica de aproximadamente 4 minutos.
-5. Use obrigatoriamente marcacoes estruturais como [Verso 1], [Verso 2], [Ponte] e [Refrao].
-6. O [Refrao] deve aparecer pelo menos 2 vezes e resumir o sentimento principal da historia.
-7. Escreva em primeira pessoa, representando o sentimento do cliente.
-8. O sexo revelado no cha e: "{{sexo_bebe_revelacao}}".
-9. O nome escolhido do bebe e: "{{nome_bebe_revelacao}}".
-10. O nome "{{nome_bebe_revelacao}}" deve aparecer exatamente uma unica vez, e precisa ser estritamente a ultima palavra de toda a cancao.
-11. Nao use o nome do bebe em nenhum outro trecho da letra.
-12. Inclua todos os nomes relevantes enviados pelo cliente.
-13. Evite rimas forcadas, palavras soltas e excesso de literalidade.
-14. Conduza a musica para que a revelacao final tenha impacto emocional maximo.
+5. Use obrigatoriamente marcacoes estruturais exatamente nesta ordem: [Intro], [Verso 1], [Refrao], [Instrumental], [Verso 2], [Refrao], [Ponte], [Refrao].
+6. Nao use outros blocos alem desses e nao altere a ordem.
+7. O [Refrao] deve aparecer 3 vezes e resumir o sentimento principal da historia.
+8. Escreva em primeira pessoa, representando o sentimento do cliente.
+9. O sexo revelado no cha e: "{{sexo_bebe_revelacao}}".
+10. O nome escolhido do bebe e: "{{nome_bebe_revelacao}}".
+11. Antes da [Ponte], nao escreva o nome "{{nome_bebe_revelacao}}" em nenhum trecho.
+12. A primeira vez que o nome "{{nome_bebe_revelacao}}" aparecer deve ser obrigatoriamente como a ultima palavra da [Ponte].
+13. O ultimo [Refrao] deve ser um refrao novo, diferente dos refroes anteriores, ja revelado e contendo o nome "{{nome_bebe_revelacao}}" de forma emocional e memoravel.
+14. Depois da [Ponte], o nome "{{nome_bebe_revelacao}}" pode se repetir no ultimo [Refrao] para criar memoria emocional.
+15. A ultima palavra de toda a cancao deve ser obrigatoriamente "{{nome_bebe_revelacao}}".
+16. Inclua todos os nomes relevantes enviados pelo cliente.
+17. Evite rimas forcadas, palavras soltas e excesso de literalidade.
+18. Conduza a musica para que a revelacao final tenha impacto emocional maximo.
 
 Escreva apenas a letra da musica, com as marcacoes estruturais, sem comentarios extras e sem explicacoes fora da letra.`;
 
@@ -99,11 +104,14 @@ LETRA ATUAL:
 DIRETRIZES:
 1. Reescreva apenas o necessario para atender ao feedback, preservando o que ja funciona.
 2. Mantenha a historia, a emocao, a expectativa e a estrutura da musica.
-3. Preserve as marcacoes estruturais como [Verso], [Ponte] e [Refrao].
+3. Preserve ou reorganize as marcacoes estruturais exatamente nesta ordem: [Intro], [Verso 1], [Refrao], [Instrumental], [Verso 2], [Refrao], [Ponte], [Refrao].
 4. Continue em primeira pessoa.
 5. O sexo revelado no cha continua sendo "{{sexo_bebe_revelacao}}".
-6. O nome "{{nome_bebe_revelacao}}" deve continuar sendo a ultima palavra da cancao e aparecer apenas nessa posicao final.
-7. Preserve o impacto emocional da revelacao e a repeticao forte do [Refrao].
+6. Antes da [Ponte], nao escreva o nome "{{nome_bebe_revelacao}}" em nenhum trecho.
+7. A primeira vez que o nome "{{nome_bebe_revelacao}}" aparecer deve continuar sendo obrigatoriamente como a ultima palavra da [Ponte].
+8. O ultimo [Refrao] deve ser um refrao novo, diferente dos refroes anteriores, ja revelado e contendo o nome "{{nome_bebe_revelacao}}" de forma emocional e memoravel.
+9. A ultima palavra de toda a cancao deve continuar sendo obrigatoriamente "{{nome_bebe_revelacao}}".
+10. Preserve o impacto emocional da revelacao e a repeticao forte do ultimo [Refrao].
 
 Escreva apenas a nova letra, sem explicar alteracoes.`;
 
@@ -253,7 +261,10 @@ export async function buildComposePrompt(resp: RespostasFormulario, selectedGend
     nome_bebe_revelacao: babyName,
     sexo_bebe_revelacao: babyGender,
     revelacao_regra: resp.temaId === 'revelacao'
-      ? `6. O nome "${babyName}" deve ser estritamente a ultima palavra da cancao.`
+      ? `20. Antes da [Ponte], nao escreva o nome "${babyName}" em nenhum trecho.
+21. A primeira vez que o nome "${babyName}" aparecer deve ser obrigatoriamente como a ultima palavra da [Ponte].
+22. O ultimo [Refrao] deve ser um refrao novo, diferente dos refroes anteriores, ja revelado e contendo o nome "${babyName}".
+23. A ultima palavra de toda a cancao deve ser obrigatoriamente "${babyName}".`
       : '',
   }).trim();
 }
@@ -275,7 +286,10 @@ export async function buildRefinePrompt(
     nome_bebe_revelacao: babyName,
     sexo_bebe_revelacao: babyGender,
     revelacao_refine_regra: resp.temaId === 'revelacao'
-      ? `5. O nome "${babyName}" deve continuar sendo a ultima palavra da cancao.`
+      ? `11. Antes da [Ponte], nao escreva o nome "${babyName}" em nenhum trecho.
+12. A primeira vez que o nome "${babyName}" aparecer deve ser obrigatoriamente como a ultima palavra da [Ponte].
+13. O ultimo [Refrao] deve ser um refrao novo, diferente dos refroes anteriores, ja revelado e contendo o nome "${babyName}".
+14. A ultima palavra de toda a cancao deve continuar sendo obrigatoriamente "${babyName}".`
       : '',
   }).trim();
 }
