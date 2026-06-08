@@ -144,6 +144,13 @@ const TOTAL_ORDER_AMOUNT_CENTS = 1999;
 
 type InfinitePayStage = 'preview' | 'final';
 
+type N8nEventName =
+  | 'lyrics_approved'
+  | 'preview_payment_confirmed'
+  | 'final_payment_confirmed'
+  | 'proof_uploaded'
+  | 'audio_attached';
+
 function getBaseUrl(req: express.Request) {
   const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0]?.trim();
   const forwardedHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim();
@@ -156,11 +163,62 @@ function getInfinitePayHandle() {
   return (process.env.INFINITEPAY_HANDLE || '').trim().replace(/^\$/, '');
 }
 
+function getN8nWebhookUrl() {
+  return (process.env.N8N_WEBHOOK_URL || '').trim();
+}
+
+function getN8nWebhookSecret() {
+  return (process.env.N8N_WEBHOOK_SECRET || '').trim();
+}
+
 function formatInfinitePayPhoneNumber(value: string) {
   const digits = (value || '').replace(/\D/g, '');
   if (!digits) return '+5500000000000';
   if (digits.startsWith('55')) return `+${digits}`;
   return `+55${digits}`;
+}
+
+async function sendN8nEvent(event: N8nEventName, pedido: PedidoMusica, extra: Record<string, unknown> = {}) {
+  const webhookUrl = getN8nWebhookUrl();
+  if (!webhookUrl) {
+    return { sent: false, reason: 'N8N nao configurado.' };
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(getN8nWebhookSecret() ? { 'x-workflow-secret': getN8nWebhookSecret() } : {}),
+    },
+    body: JSON.stringify({
+      event,
+      sentAt: new Date().toISOString(),
+      pedido: {
+        id: pedido.id,
+        createdAt: pedido.createdAt,
+        updatedAt: pedido.updatedAt,
+        clienteEmail: pedido.cliente_email,
+        clienteWhatsapp: pedido.cliente_whatsapp,
+        temaId: pedido.respostas.temaId,
+        estiloMusical: pedido.respostas.estiloMusical,
+        provVoice: pedido.respostas.provVoice,
+        statusPagamento: pedido.status_pagamento,
+        statusProducao: pedido.status_producao,
+        letraAprovada: pedido.letra_aprovada,
+        hasPreviewV1: Boolean(pedido.url_local_servidor),
+        hasPreviewV2: Boolean(pedido.url_local_servidor_2),
+        comprovanteNomeArquivo: pedido.comprovante_nome_arquivo,
+      },
+      ...extra,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Falha ao enviar evento ${event} para o n8n.`);
+  }
+
+  return { sent: true };
 }
 
 function hasAnyPreview(pedido: PedidoMusica) {
@@ -219,6 +277,14 @@ async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica) {
   pedido.status_producao = hasAnyPreview(pedido) ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
   pedido.updatedAt = new Date().toISOString();
   await savePedido(pedido);
+  try {
+    await sendN8nEvent('preview_payment_confirmed', pedido, {
+      paymentStage: 'preview',
+      amountCents: PREVIEW_UNLOCK_AMOUNT_CENTS,
+    });
+  } catch (error) {
+    console.error('Falha ao notificar n8n sobre pagamento da previa:', error);
+  }
   return pedido;
 }
 
@@ -230,6 +296,15 @@ async function markFinalPaymentAsConfirmed(pedido: PedidoMusica) {
   pedido.data_expiracao_local = expDate.toISOString();
   pedido.updatedAt = new Date().toISOString();
   await savePedido(pedido);
+  try {
+    await sendN8nEvent('final_payment_confirmed', pedido, {
+      paymentStage: 'final',
+      amountCents: FINAL_PAYMENT_AMOUNT_CENTS,
+      totalAmountCents: TOTAL_ORDER_AMOUNT_CENTS,
+    });
+  } catch (error) {
+    console.error('Falha ao notificar n8n sobre pagamento final:', error);
+  }
   return pedido;
 }
 
@@ -1314,6 +1389,8 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     res.json({
       infinitepayHandleConfigured: Boolean(handle),
       infinitepayHandlePreview: handle ? `${handle.slice(0, 4)}***${handle.slice(-4)}` : null,
+      n8nWebhookConfigured: Boolean(getN8nWebhookUrl()),
+      n8nWebhookPreview: getN8nWebhookUrl() ? `${getN8nWebhookUrl().slice(0, 24)}...` : null,
       appUrlConfigured: Boolean(process.env.APP_URL),
       appUrl: process.env.APP_URL || null,
       host: req.get('host') || null,
@@ -1495,6 +1572,14 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       let telegramError: string | null = null;
 
       try {
+        await sendN8nEvent('lyrics_approved', pedido, {
+          trigger: 'customer_approval',
+        });
+      } catch (n8nError) {
+        console.error('Falha ao notificar n8n sobre letra aprovada:', n8nError);
+      }
+
+      try {
         const telegramResult = await sendTelegramApprovalNotification(pedido);
         telegramSent = telegramResult.sent;
       } catch (telegramErr: any) {
@@ -1659,6 +1744,15 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     pedido.comprovante_nome_arquivo = fileName;
     pedido.updatedAt = new Date().toISOString();
     await savePedido(pedido);
+
+    try {
+      await sendN8nEvent('proof_uploaded', pedido, {
+        fileName,
+        proofUrl: savedProof.url,
+      });
+    } catch (n8nError) {
+      console.error('Falha ao notificar n8n sobre comprovante:', n8nError);
+    }
 
     let telegramSent = false;
     let telegramError: string | null = null;
@@ -1897,6 +1991,17 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       pedido.updatedAt = new Date().toISOString();
 
       await savePedido(pedido);
+      try {
+        await sendN8nEvent('audio_attached', pedido, {
+          source: 'admin_panel',
+          hasPreviewV1: Boolean(pedido.url_local_servidor),
+          hasPreviewV2: Boolean(pedido.url_local_servidor_2),
+          referenceUrl1: pedido.url_referencia_externa_1,
+          referenceUrl2: pedido.url_referencia_externa_2,
+        });
+      } catch (n8nError) {
+        console.error('Falha ao notificar n8n sobre audio anexado:', n8nError);
+      }
       res.json(pedido);
     } catch (error: any) {
       console.error('Erro ao anexar audio manual:', error);
