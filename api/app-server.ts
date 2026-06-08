@@ -97,6 +97,7 @@ function formatInfinitePayPhoneNumber(value: string) {
 async function sendN8nEvent(event: N8nEventName, pedido: PedidoMusica, extra: Record<string, unknown> = {}) {
   const webhookUrl = getN8nWebhookUrl();
   if (!webhookUrl) {
+    console.warn(`N8N_WEBHOOK_URL nao configurado. Evento ${event} do pedido ${pedido.id} nao foi enviado.`);
     return { sent: false, reason: 'N8N nao configurado.' };
   }
 
@@ -177,6 +178,34 @@ function parseInfinitePayOrderNsu(orderNsu: string | undefined) {
     pedidoId,
     stage: stage as InfinitePayStage,
   };
+}
+
+function findStringDeep(value: unknown, keys: string[]): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+
+  for (const key of keys) {
+    const direct = record[key];
+    if (typeof direct === 'string' && direct.trim()) return direct;
+  }
+
+  for (const nested of Object.values(record)) {
+    const found = findStringDeep(nested, keys);
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+function extractInfinitePayOrderNsu(body: Record<string, unknown>) {
+  return findStringDeep(body, [
+    'order_nsu',
+    'orderNsu',
+    'order_reference',
+    'orderReference',
+    'external_reference',
+    'externalReference',
+  ]);
 }
 
 function extractInfinitePayPaymentId(body: Record<string, unknown>) {
@@ -1166,11 +1195,14 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
 
   app.get('/api/debug/env', (req, res) => {
     const handle = getInfinitePayHandle();
+    const n8nSecret = getN8nWebhookSecret();
     res.json({
       infinitepayHandleConfigured: Boolean(handle),
       infinitepayHandlePreview: handle ? `${handle.slice(0, 4)}***${handle.slice(-4)}` : null,
       n8nWebhookConfigured: Boolean(getN8nWebhookUrl()),
       n8nWebhookPreview: getN8nWebhookUrl() ? `${getN8nWebhookUrl().slice(0, 24)}...` : null,
+      n8nSecretConfigured: Boolean(n8nSecret),
+      n8nSecretPreview: n8nSecret ? `${n8nSecret.slice(0, 4)}***${n8nSecret.slice(-4)}` : null,
       appUrlConfigured: Boolean(process.env.APP_URL),
       appUrl: process.env.APP_URL || null,
       host: req.get('host') || null,
@@ -1407,7 +1439,12 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
 
   app.post('/api/payments/infinitepay/webhook', async (req, res) => {
     try {
-      const parsed = parseInfinitePayOrderNsu(req.body?.order_nsu);
+      console.info('Webhook InfinitePay recebido:', {
+        keys: Object.keys(req.body || {}),
+        orderNsu: extractInfinitePayOrderNsu(req.body || {}),
+      });
+
+      const parsed = parseInfinitePayOrderNsu(extractInfinitePayOrderNsu(req.body || {}));
       if (!parsed) {
         res.status(400).json({ success: false, message: 'order_nsu invalido.' });
         return;
@@ -1434,14 +1471,18 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
   });
 
   app.post('/api/payment/simulate-confirm', async (req, res) => {
-    const { id } = req.body as { id: string };
+    const { id, stage } = req.body as { id: string; stage?: InfinitePayStage };
     const pedido = await getPedido(id);
     if (!pedido) {
       res.status(404).json({ error: 'Pedido de musica nao encontrado.' });
       return;
     }
 
-    await markFinalPaymentAsConfirmed(pedido, 'manual-simulation');
+    if (stage === 'preview') {
+      await markPreviewPaymentAsConfirmed(pedido, 'manual-simulation-preview');
+    } else {
+      await markFinalPaymentAsConfirmed(pedido, 'manual-simulation-final');
+    }
     res.json(pedido);
   });
 
