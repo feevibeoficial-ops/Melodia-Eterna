@@ -189,7 +189,7 @@ export const DEFAULT_TEMAS: TemaConfig[] = [
     bgColor: 'from-violet-500/10 to-indigo-500/10',
     color: 'violet',
     perguntas: [
-      { id: 'p1', label: 'Qual o nome dos pais do bebe?', p_placeholder: 'Ex: Juliana e Renato' },
+      { id: 'p1', label: 'Qual o nome do pai e da mae do bebe?', p_placeholder: 'Ex: Pai: Renato / Mae: Juliana' },
       { id: 'p2', label: 'Como foi a descoberta da gravidez e como esta a ansiedade pela espera?', p_placeholder: 'Ex: Descobrimos no teste de farmacia numa terca de manha. A ansiedade esta mil por hora.' },
       { id: 'p3', label: 'Quais sao os palpites da familia? Ha alguma brincadeira sobre isso?', p_placeholder: 'Ex: A avo jura que e menina por causa do formato da barriga, mas o pai acha que e o capitao do time.' },
       { id: 'p4', label: 'Deixe uma mensagem de amor sobre como esse bebe ja e amado antes mesmo de nascer.', p_placeholder: 'Ex: Voce e nossa maior promessa, nossa casa e nossos coracoes ja estao prontos para voce.' },

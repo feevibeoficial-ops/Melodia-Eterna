@@ -21,6 +21,18 @@ function parseRevealBabyNames(value: string | undefined) {
   };
 }
 
+function parseRevealParentNames(value: string | undefined) {
+  const raw = value || '';
+  const fatherMatch = raw.match(/pai\s*(?::|e|Ã©|é)\s*([^\n\r]+)/i);
+  const motherMatch = raw.match(/m(?:a|ã|Ã£)e\s*(?::|e|Ã©|é)\s*([^\n\r]+)/i);
+  const splitNames = raw.split(/\s+e\s+/i).map((item) => item.trim()).filter(Boolean);
+
+  return {
+    pai: fatherMatch?.[1]?.trim() || splitNames[1] || '',
+    mae: motherMatch?.[1]?.trim() || splitNames[0] || '',
+  };
+}
+
 function formatBrazilianWhatsApp(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 13);
   const withoutCountry = digits.startsWith('55') ? digits.slice(2) : digits;
@@ -46,6 +58,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
     });
     return initial;
   });
+  const [revealParentNames, setRevealParentNames] = useState(() => parseRevealParentNames(initialData?.respostas?.p1));
   const [revealBabyNames, setRevealBabyNames] = useState(() => parseRevealBabyNames(initialData?.respostas?.p5));
   const [estiloMusical, setEstiloMusical] = useState(initialData?.estiloMusical || 'RomÃ¢ntico');
   const [provVoice, setProvVoice] = useState(initialData?.provVoice || 'indiferente');
@@ -68,6 +81,17 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
   const handleInputChange = (fieldId: string, val: string) => {
     setAnswers((prev) => ({ ...prev, [fieldId]: val }));
+  };
+
+  const handleRevealParentNameChange = (field: 'pai' | 'mae', value: string) => {
+    setRevealParentNames((prev) => {
+      const next = { ...prev, [field]: value };
+      setAnswers((current) => ({
+        ...current,
+        p1: `Pai: ${next.pai.trim()}\nMae: ${next.mae.trim()}`.trim(),
+      }));
+      return next;
+    });
   };
 
   const handleRevealBabyNameChange = (field: 'menino' | 'menina', value: string) => {
@@ -139,6 +163,15 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   };
 
   const isThemeQuestionsValid = () => {
+    if (theme.id === 'revelacao') {
+      if (!revealParentNames.pai.trim() || !revealParentNames.mae.trim()) {
+        return false;
+      }
+      if (!revealBabyNames.menino.trim() || !revealBabyNames.menina.trim()) {
+        return false;
+      }
+    }
+
     return theme.perguntas
       .filter((q) => q.isActive !== false && q.isRequired !== false)
       .every((q) => answers[q.id] && answers[q.id].trim().length > 1);
@@ -234,7 +267,30 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                     {q.isRequired !== false && <span className="text-xs text-natural-caramel font-light font-sans">* obrigatÃ³rio</span>}
                   </label>
 
-                  {theme.id === 'revelacao' && q.id === 'p5' ? (
+                  {theme.id === 'revelacao' && q.id === 'p1' ? (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-natural-subtext">Pai</span>
+                        <input
+                          type="text"
+                          value={revealParentNames.pai}
+                          onChange={(e) => handleRevealParentNameChange('pai', e.target.value)}
+                          placeholder="Ex: Renato"
+                          className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white transition-all text-natural-dark"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-natural-subtext">Mae</span>
+                        <input
+                          type="text"
+                          value={revealParentNames.mae}
+                          onChange={(e) => handleRevealParentNameChange('mae', e.target.value)}
+                          placeholder="Ex: Juliana"
+                          className="w-full px-4 py-3 bg-natural-sage-light border border-natural-border rounded-xl text-sm focus:outline-hidden focus:border-natural-sage focus:bg-white transition-all text-natural-dark"
+                        />
+                      </div>
+                    </div>
+                  ) : theme.id === 'revelacao' && q.id === 'p5' ? (
                     <div className="grid sm:grid-cols-2 gap-3">
                       <div className="space-y-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-natural-subtext">Menino</span>
