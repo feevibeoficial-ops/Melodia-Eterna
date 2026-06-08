@@ -134,6 +134,24 @@ function extractBabyName(resp: RespostasFormulario, selectedGenderForRevelacao?:
   return selectedGenderForRevelacao === 'menina' ? girlName : boyName;
 }
 
+function extractRevealBabyName(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
+  const namesAns = normalizeTextDeep(resp.respostas.p5 || '').replace(/\r/g, '\n').trim();
+
+  const captureName = (target: 'menino' | 'menina', fallback: string) => {
+    const lineMatch = namesAns.match(new RegExp(`^\\s*${target}\\s*(?:e|é|:|-)?\\s*([^\\n]+)`, 'imu'));
+    if (lineMatch?.[1]) {
+      return lineMatch[1].replace(/^(?:e|é|:|-)\s*/i, '').trim().split(/\s+/)[0] || fallback;
+    }
+
+    const sentenceMatch = namesAns.match(new RegExp(`${target}[^\\p{L}\\p{N}]+(?:se\\s+chamara|chamara|sera|será|nome\\s*(?:e|é|:)?)\\s+([\\p{L}\\p{N}_-]+)`, 'iu'));
+    return sentenceMatch?.[1]?.trim() || fallback;
+  };
+
+  return selectedGenderForRevelacao === 'menina'
+    ? captureName('menina', 'Livia')
+    : captureName('menino', 'Teo');
+}
+
 function getTemaIds(): TemaId[] {
   return ['romantica', 'mae', 'pai', 'filho', 'debutante', 'amizade', 'revelacao'];
 }
@@ -241,8 +259,8 @@ async function buildRespostasCliente(resp: RespostasFormulario, selectedGenderFo
   ];
 
   if (resp.temaId === 'revelacao') {
-    linhas.push(`Sexo revelado no cha: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}`);
-    linhas.push(`Nome escolhido do bebe: ${extractBabyName(resp, selectedGenderForRevelacao)}`);
+    linhas.push(`Sexo revelado no chá: ${selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino'}`);
+    linhas.push(`Nome escolhido do bebê: ${extractRevealBabyName(resp, selectedGenderForRevelacao)}`);
   }
 
   return linhas.join('\n');
@@ -251,7 +269,7 @@ async function buildRespostasCliente(resp: RespostasFormulario, selectedGenderFo
 export async function buildComposePrompt(resp: RespostasFormulario, selectedGenderForRevelacao?: 'menino' | 'menina') {
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
-  const babyName = extractBabyName(resp, selectedGenderForRevelacao);
+  const babyName = extractRevealBabyName(resp, selectedGenderForRevelacao);
   const babyGender = selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino';
 
   return applyTemplate(promptTemplate?.composeTemplate || DEFAULT_COMPOSE_TEMPLATE, {
@@ -277,7 +295,7 @@ export async function buildRefinePrompt(
 ) {
   const templates = await listPromptTemplates();
   const promptTemplate = templates.find((item) => item.temaId === resp.temaId);
-  const babyName = extractBabyName(resp, selectedGenderForRevelacao);
+  const babyName = extractRevealBabyName(resp, selectedGenderForRevelacao);
   const babyGender = selectedGenderForRevelacao === 'menina' ? 'Menina' : 'Menino';
 
   return applyTemplate(promptTemplate?.refineTemplate || DEFAULT_REFINE_TEMPLATE, {

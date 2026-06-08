@@ -1,5 +1,5 @@
 function looksLikeMojibake(value: string) {
-  return /Ã.|â.|ðŸ|Â./.test(value);
+  return /Ã.|Â.|â.|ðŸ|�/.test(value);
 }
 
 export function fixMojibake(value: string): string {

@@ -13,8 +13,8 @@ interface QuestionsFormProps {
 
 function parseRevealBabyNames(value: string | undefined) {
   const raw = value || '';
-  const boyMatch = raw.match(/menino\s*(?:Ã©|e|:)\s*([^\n\r]+)/i);
-  const girlMatch = raw.match(/menina\s*(?:Ã©|e|:)\s*([^\n\r]+)/i);
+  const boyMatch = raw.match(/menino\s*(?:é|e|:)\s*([^\n\r]+)/i);
+  const girlMatch = raw.match(/menina\s*(?:é|e|:)\s*([^\n\r]+)/i);
   return {
     menino: boyMatch?.[1]?.trim() || '',
     menina: girlMatch?.[1]?.trim() || '',
@@ -23,8 +23,8 @@ function parseRevealBabyNames(value: string | undefined) {
 
 function parseRevealParentNames(value: string | undefined) {
   const raw = value || '';
-  const fatherMatch = raw.match(/pai\s*(?::|e|Ã©|é)\s*([^\n\r]+)/i);
-  const motherMatch = raw.match(/m(?:a|ã|Ã£)e\s*(?::|e|Ã©|é)\s*([^\n\r]+)/i);
+  const fatherMatch = raw.match(/pai\s*(?::|e|é)\s*([^\n\r]+)/i);
+  const motherMatch = raw.match(/m(?:a|ã)e\s*(?::|e|é)\s*([^\n\r]+)/i);
   const splitNames = raw.split(/\s+e\s+/i).map((item) => item.trim()).filter(Boolean);
 
   return {
@@ -60,7 +60,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   });
   const [revealParentNames, setRevealParentNames] = useState(() => parseRevealParentNames(initialData?.respostas?.p1));
   const [revealBabyNames, setRevealBabyNames] = useState(() => parseRevealBabyNames(initialData?.respostas?.p5));
-  const [estiloMusical, setEstiloMusical] = useState(initialData?.estiloMusical || 'RomÃ¢ntico');
+  const [estiloMusical, setEstiloMusical] = useState(initialData?.estiloMusical || 'Romântico');
   const [provVoice, setProvVoice] = useState(initialData?.provVoice || 'indiferente');
   const [clienteEmail, setClienteEmail] = useState(initialData?.clienteEmail || '');
   const [clienteWhatsapp, setClienteWhatsapp] = useState(formatBrazilianWhatsApp(initialData?.clienteWhatsapp || ''));
@@ -69,14 +69,14 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   const recognitionRef = useRef<any>(null);
 
   const ESTILOS = [
-    'RomÃ¢ntico', 'Sertanejo', 'Pop', 'MPB', 'Pagode',
-    'ForrÃ³', 'Gospel', 'Rock', 'Reggae', 'EletrÃ´nico', 'Jazz', 'Infantil'
+    'Romântico', 'Sertanejo', 'Pop', 'MPB', 'Pagode',
+    'Forró', 'Gospel', 'Rock', 'Reggae', 'Eletrônico', 'Jazz', 'Infantil'
   ];
 
   const VOZES = [
-    { value: 'feminina', label: 'Voz Feminina', desc: 'MelÃ³dica, vibrante e cheia de afeto' },
-    { value: 'masculina', label: 'Voz Masculina', desc: 'Encorajadora, firme e nostÃ¡lgica' },
-    { value: 'indiferente', label: 'Sem PreferÃªncia', desc: 'Deixar sob escolha de nosso compositor' }
+    { value: 'feminina', label: 'Voz Feminina', desc: 'Melódica, vibrante e cheia de afeto' },
+    { value: 'masculina', label: 'Voz Masculina', desc: 'Encorajadora, firme e nostálgica' },
+    { value: 'indiferente', label: 'Sem Preferência', desc: 'Deixar sob escolha de nosso compositor' }
   ];
 
   const handleInputChange = (fieldId: string, val: string) => {
@@ -99,7 +99,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
       const next = { ...prev, [field]: value };
       setAnswers((current) => ({
         ...current,
-        p5: `Menino Ã© ${next.menino.trim()}\nMenina Ã© ${next.menina.trim()}`.trim(),
+        p5: `Menino: ${next.menino.trim()}\nMenina: ${next.menina.trim()}`.trim(),
       }));
       return next;
     });
@@ -117,7 +117,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Seu navegador nÃ£o oferece suporte nativo Ã  gravaÃ§Ã£o de voz. Use o Chrome ou digite normalmente.');
+      alert('Seu navegador não oferece suporte nativo à gravação de voz. Use o Chrome ou digite normalmente.');
       return;
     }
 
@@ -186,7 +186,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
   const handleNextStep = () => {
     if (step === 1) {
       if (!isThemeQuestionsValid()) {
-        alert('Por favor, preencha todos os campos do questionÃ¡rio antes de avanÃ§ar.');
+        alert('Por favor, preencha todos os campos do questionário antes de avançar.');
         return;
       }
       setStep(2);
@@ -202,7 +202,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
   const handleFinalSubmit = () => {
     if (!isContactValid()) {
-      alert('Por favor, digite um e-mail vÃ¡lido e um nÃºmero de WhatsApp completo com DDD.');
+      alert('Por favor, digite um e-mail válido e um número de WhatsApp completo com DDD.');
       return;
     }
 
@@ -252,10 +252,10 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
             <div>
               <div className="text-3xl mb-1">{theme.emoji}</div>
               <h2 className="text-2xl font-bold font-display text-natural-dark leading-tight">
-                Conte-nos sobre essa histÃ³ria {theme.id === 'romantica' ? 'de Amor' : `de ${theme.titulo}`}
+                Conte-nos sobre essa história {theme.id === 'romantica' ? 'de Amor' : `de ${theme.titulo}`}
               </h2>
               <p className="text-sm text-natural-subtext mt-1">
-                Suas lembranÃ§as e detalhes darÃ£o alma, verdade e rimas Ãºnicas Ã  canÃ§Ã£o.
+                Suas lembranças e detalhes darão alma, verdade e rimas únicas à canção.
               </p>
             </div>
 
@@ -264,7 +264,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                 <div key={q.id} className="space-y-2">
                   <label className="text-sm font-semibold text-natural-dark flex justify-between items-center">
                     <span>{q.label}</span>
-                    {q.isRequired !== false && <span className="text-xs text-natural-caramel font-light font-sans">* obrigatÃ³rio</span>}
+                    {q.isRequired !== false && <span className="text-xs text-natural-caramel font-light font-sans">* obrigatório</span>}
                   </label>
 
                   {theme.id === 'revelacao' && q.id === 'p1' ? (
@@ -331,7 +331,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                             ? 'bg-natural-dark border-natural-dark text-white animate-pulse'
                             : 'bg-white hover:bg-natural-sage-light border-natural-border text-natural-dark'
                         }`}
-                        title={recordingFieldId === q.id ? 'Parar gravaÃ§Ã£o' : 'Gravar por voz'}
+                        title={recordingFieldId === q.id ? 'Parar gravação' : 'Gravar por voz'}
                       >
                         {recordingFieldId === q.id ? (
                           <>
@@ -355,10 +355,10 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
               <div className="p-4 bg-natural-sage-light border border-natural-border rounded-2xl md:p-5 mt-6 space-y-3">
                 <div className="flex items-center gap-1.5 text-natural-dark font-medium text-sm">
                   <Sparkles className="w-4 h-4 text-natural-sage" />
-                  <span>Simulador de RevelaÃ§Ã£o para VisualizaÃ§Ã£o</span>
+                  <span>Simulador de Revelação para Visualização</span>
                 </div>
                 <p className="text-xs text-natural-subtext leading-relaxed font-light">
-                  Selecione qual serÃ¡ o sexo revelado no chÃ¡ para compormos a letra com o nome correto.
+                  Selecione qual será o sexo revelado no chá para compormos a letra com o nome correto.
                 </p>
                 <div className="flex gap-4">
                   <button
@@ -370,7 +370,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                         : 'bg-white border-natural-border hover:bg-natural-sage-light text-natural-dark'
                     }`}
                   >
-                    ðŸ‘¦ Menino ({revealBabyNames.menino || 'sem nome'})
+                    Menino ({revealBabyNames.menino || 'sem nome'})
                   </button>
                   <button
                     type="button"
@@ -381,7 +381,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                         : 'bg-white border-natural-border hover:bg-natural-sage-light text-natural-dark'
                     }`}
                   >
-                    ðŸ‘§ Menina ({revealBabyNames.menina || 'sem nome'})
+                    Menina ({revealBabyNames.menina || 'sem nome'})
                   </button>
                 </div>
               </div>
@@ -391,7 +391,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
               onClick={handleNextStep}
               className="w-full mt-6 py-3 px-5 bg-natural-sage hover:bg-natural-sage/90 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
-              AvanÃ§ar PreferÃªncias <ArrowRight className="w-4 h-4" />
+              Avançar Preferências <ArrowRight className="w-4 h-4" />
             </button>
           </motion.div>
         )}
@@ -411,7 +411,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                 Estilo Musical e Identidade Vocal
               </h2>
               <p className="text-sm text-natural-subtext mt-1">
-                Escolha a roupagem perfeita que ditarÃ¡ o ritmo e a harmonia da canÃ§Ã£o.
+                Escolha a roupagem perfeita que ditará o ritmo e a harmonia da canção.
               </p>
             </div>
 
@@ -440,7 +440,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
 
             <div className="space-y-4 pt-2">
               <label className="text-sm font-semibold text-natural-dark block">
-                Qual timbre de voz Ã© o ideal?
+                Qual timbre de voz é o ideal?
               </label>
 
               <div className="space-y-3">
@@ -472,7 +472,7 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
               onClick={handleNextStep}
               className="w-full mt-6 py-3 px-5 bg-natural-sage hover:bg-natural-sage/90 text-white text-sm font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
-              AvanÃ§ar Contato <ArrowRight className="w-4 h-4" />
+              Avançar Contato <ArrowRight className="w-4 h-4" />
             </button>
           </motion.div>
         )}
@@ -492,14 +492,14 @@ export default function QuestionsForm({ theme, initialData, initialSelectedGende
                 Dados de Contato
               </h2>
               <p className="text-sm text-natural-subtext mt-1">
-                NecessÃ¡rios para localizar suas canÃ§Ãµes ou enviar alertas importantes de conclusÃ£o.
+                Necessários para localizar suas canções ou enviar alertas importantes de conclusão.
               </p>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-natural-subtext flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-natural-sage" /> E-mail de PreferÃªncia *
+                  <Mail className="w-3.5 h-3.5 text-natural-sage" /> E-mail de Preferência *
                 </label>
                 <input
                   type="email"
