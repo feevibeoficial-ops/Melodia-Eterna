@@ -443,70 +443,10 @@ function parseTelegramAudioCommand(text: string | undefined) {
   };
 }
 
-function isTelegramStatsCommand(text: string | undefined) {
-  if (!text) return false;
-  const normalized = text.trim().toLowerCase();
-  return normalized === '/resumo';
-}
-
 function isTelegramHelpCommand(text: string | undefined) {
   if (!text) return false;
   const normalized = text.trim().toLowerCase();
   return normalized === '/start' || normalized === '/help' || normalized === '/ajuda';
-}
-
-function parseTelegramMarkPaidCommand(text: string | undefined) {
-  return null;
-}
-
-function formatRanking(items: Record<string, number>, emptyLabel: string) {
-  const entries = Object.entries(items)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 10);
-
-  if (!entries.length) {
-    return emptyLabel;
-  }
-
-  return entries.map(([label, count]) => `- ${label}: ${count}`).join('\n');
-}
-
-async function buildTelegramStatsMessage() {
-  const pedidos = await listAllPedidos();
-  const total = pedidos.length;
-  const pagos = pedidos.filter((pedido) => pedido.status_pagamento === 'PAGO').length;
-  const pendentes = total - pagos;
-  const aprovados = pedidos.filter((pedido) => Boolean(pedido.letra_aprovada)).length;
-  const comPrevias = pedidos.filter((pedido) => Boolean(pedido.url_local_servidor && pedido.url_local_servidor_2)).length;
-
-  const porTema: Record<string, number> = {};
-  const porEstilo: Record<string, number> = {};
-  const porStatus: Record<string, number> = {};
-
-  for (const pedido of pedidos) {
-    porTema[pedido.respostas.temaId] = (porTema[pedido.respostas.temaId] || 0) + 1;
-    porEstilo[pedido.respostas.estiloMusical] = (porEstilo[pedido.respostas.estiloMusical] || 0) + 1;
-    porStatus[pedido.status_producao] = (porStatus[pedido.status_producao] || 0) + 1;
-  }
-
-  return [
-    'Resumo do sistema Melodia Eterna',
-    '',
-    `Total de pedidos: ${total}`,
-    `Pagos: ${pagos}`,
-    `Pendentes: ${pendentes}`,
-    `Letras aprovadas: ${aprovados}`,
-    `Pedidos com previas prontas: ${comPrevias}`,
-    '',
-    'Por status de producao:',
-    formatRanking(porStatus, '- Nenhum pedido'),
-    '',
-    'Por tema:',
-    formatRanking(porTema, '- Nenhum tema registrado'),
-    '',
-    'Por estilo musical:',
-    formatRanking(porEstilo, '- Nenhum estilo registrado'),
-  ].join('\n');
 }
 
 async function buildTelegramRecentProofsMessage() {
@@ -537,8 +477,6 @@ function buildTelegramHelpMessage() {
   return [
     'Comandos do bot Melodia Eterna',
     '',
-    '/resumo - resumo do sistema',
-    '/help - mostra esta ajuda',
     '/musica - adiciona musicas (V1 e V2) a um pedido',
     '/cancelar - cancela a operacao em andamento',
   ].join('\n');
@@ -906,11 +844,9 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
   }
 
   const isHelp = isTelegramHelpCommand(text);
-  const isStats = isTelegramStatsCommand(text);
-  const markPaid = parseTelegramMarkPaidCommand(text);
   const audioCommand = parseTelegramAudioCommand(message.caption || message.text);
 
-  if (isHelp || isStats || markPaid || audioCommand || text === '/musica') {
+  if (isHelp || audioCommand || text === '/musica') {
     const session = telegramSessions.get(chatId);
     if (session) {
       clearSessionFiles(session);
@@ -920,11 +856,6 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
 
   if (isHelp) {
     await sendTelegramReply(chatId, buildTelegramHelpMessage());
-    return;
-  }
-
-  if (isStats) {
-    await sendTelegramReply(chatId, await buildTelegramStatsMessage());
     return;
   }
 
@@ -1047,9 +978,6 @@ async function ensureTelegramCommands() {
   try {
     await telegramApiRequest('setMyCommands', {
       commands: [
-        { command: 'resumo', description: 'Resumo do sistema' },
-        { command: 'help', description: 'Ajuda e formatos do bot' },
-        { command: 'pago', description: 'Aprova pagamento de um pedido' },
         { command: 'musica', description: 'Adiciona musicas (previa e URL) ao pedido' },
         { command: 'cancelar', description: 'Cancela operacao em andamento' },
       ],
