@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, LoaderCircle, Lock, Mail, Music2, Plus, RefreshCw, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, LoaderCircle, Lock, Mail, Music2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { DEFAULT_TEMAS, PedidoMusica, PromptTemplate, TemaConfig, TemaId, TemaPergunta } from '../types';
 import { getAdminAccessToken, getAdminSession, getAdminSupabaseClient } from '../lib/admin-auth';
 
@@ -273,42 +273,6 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
     }
   }
 
-  async function markPaid(orderId: string) {
-    setBusyId(orderId);
-    setPageError(null);
-    try {
-      const response = await fetch(`/api/admin/orders/${orderId}/mark-paid`, {
-        method: 'POST',
-        headers: await authHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Falha ao marcar como pago.');
-      await loadOrders();
-    } catch (err: any) {
-      setPageError(err.message || 'Falha ao marcar como pago.');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function markUnpaid(orderId: string) {
-    setBusyId(orderId);
-    setPageError(null);
-    try {
-      const response = await fetch(`/api/admin/orders/${orderId}/mark-unpaid`, {
-        method: 'POST',
-        headers: await authHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Falha ao voltar para não pago.');
-      await loadOrders();
-    } catch (err: any) {
-      setPageError(err.message || 'Falha ao voltar para não pago.');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function resetAudio(orderId: string) {
     setBusyId(orderId);
     setPageError(null);
@@ -322,24 +286,6 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       await loadOrders();
     } catch (err: any) {
       setPageError(err.message || 'Falha ao limpar as faixas.');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function resendTelegram(orderId: string) {
-    setBusyId(orderId);
-    setPageError(null);
-    try {
-      const response = await fetch(`/api/admin/orders/${orderId}/resend-telegram`, {
-        method: 'POST',
-        headers: await authHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Falha ao reenviar a letra no Telegram.');
-      await loadOrders();
-    } catch (err: any) {
-      setPageError(err.message || 'Falha ao reenviar a letra no Telegram.');
     } finally {
       setBusyId(null);
     }
@@ -603,7 +549,7 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
       <div>
         <h2 className="text-3xl font-bold font-display text-natural-dark">Gestão de Pedidos</h2>
         <p className="text-sm text-natural-subtext mt-1">
-          Anexe as duas músicas, registre as URLs de referência e marque o pagamento manualmente quando receber o comprovante.
+          Anexe as músicas e registre as URLs de referência. Pagamentos são identificados automaticamente pela InfinitePay.
         </p>
       </div>
 
@@ -849,7 +795,6 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                       <div className="text-right text-xs text-natural-subtext space-y-1">
                         <p>Prévia 1: {order.url_local_servidor ? 'anexada' : 'não anexada'}</p>
                         <p>Prévia 2: {order.url_local_servidor_2 ? 'anexada' : 'não anexada'}</p>
-                        <p>Comprovante: {order.comprovante_nome_arquivo || 'não enviado'}</p>
                       </div>
                       <div className="text-natural-subtext">
                         {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
@@ -977,17 +922,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                               <button type="button" disabled={busy} onClick={() => deleteOrder(order.id)} className="px-4 py-3 bg-[#8B1E1E] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
                                 <Trash2 className="w-4 h-4" /> Excluir pedido
                               </button>
-                              <button type="button" disabled={busy || !order.letra_aprovada} onClick={() => resendTelegram(order.id)} className="px-4 py-3 bg-[#1F7A4D] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                                <Send className="w-4 h-4" /> Reenviar letra no Telegram
-                              </button>
                               <button type="button" disabled={busy || !draft.source1 || !draft.source2} onClick={() => attachAudio(order.id)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
                                 <Music2 className="w-4 h-4" /> Anexar faixas e gerar prévias
-                              </button>
-                              <button type="button" disabled={busy} onClick={() => markPaid(order.id)} className="px-4 py-3 bg-[#2E7D32] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                                <CheckCircle2 className="w-4 h-4" /> Marcar como pago
-                              </button>
-                              <button type="button" disabled={busy} onClick={() => markUnpaid(order.id)} className="px-4 py-3 bg-[#9A5B33] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                                Não pago
                               </button>
                               <button type="button" disabled={busy} onClick={() => resetAudio(order.id)} className="px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-bold text-natural-subtext cursor-pointer disabled:opacity-60">
                                 Limpar faixas
@@ -1029,7 +965,6 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                     <p className="text-xs text-natural-subtext">Tema: {order.respostas.temaId} | Estilo: {order.respostas.estiloMusical}</p>
                     <p className="text-xs text-natural-subtext">PrÃ©via 1: {order.url_local_servidor || 'nÃ£o anexada'}</p>
                     <p className="text-xs text-natural-subtext">PrÃ©via 2: {order.url_local_servidor_2 || 'nÃ£o anexada'}</p>
-                    <p className="text-xs text-natural-subtext">Comprovante: {order.comprovante_nome_arquivo || 'nÃ£o enviado'}</p>
                   </div>
 
                   <div className="lg:flex-1 space-y-4">
@@ -1069,17 +1004,8 @@ export default function GestaoPedidos({ onBack }: GestaoPedidosProps) {
                     </div>
 
                     <div className="flex flex-wrap gap-3">
-                      <button type="button" disabled={busy || !order.letra_aprovada} onClick={() => resendTelegram(order.id)} className="px-4 py-3 bg-[#1F7A4D] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                        <Send className="w-4 h-4" /> Reenviar letra no Telegram
-                      </button>
                       <button type="button" disabled={busy || !draft.source1 || !draft.source2} onClick={() => attachAudio(order.id)} className="px-4 py-3 bg-natural-sage text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
                         <Music2 className="w-4 h-4" /> Anexar faixas e gerar prÃ©vias
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => markPaid(order.id)} className="px-4 py-3 bg-[#2E7D32] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                        <CheckCircle2 className="w-4 h-4" /> Marcar como pago
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => markUnpaid(order.id)} className="px-4 py-3 bg-[#9A5B33] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-60">
-                        NÃ£o pago
                       </button>
                       <button type="button" disabled={busy} onClick={() => resetAudio(order.id)} className="px-4 py-3 bg-white border border-natural-border rounded-xl text-xs font-bold text-natural-subtext cursor-pointer disabled:opacity-60">
                         Limpar faixas

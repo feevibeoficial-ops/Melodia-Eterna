@@ -18,89 +18,6 @@ import { deleteTheme, listThemes, upsertTheme } from '../server/theme-config.js'
 
 const DATA_DIR = isSupabaseConfigured() ? path.join(os.tmpdir(), 'melodia-eterna') : path.join(process.cwd(), 'data');
 const TELEGRAM_STATE_PATH = path.join(DATA_DIR, 'telegram-state.json');
-const COMPROVANTES_DIR = path.join(DATA_DIR, 'comprovantes');
-const PROOFS_BUCKET = process.env.SUPABASE_PROOFS_BUCKET || 'comprovantes';
-
-if (!process.env.VERCEL && !shouldUseSupabaseStorage() && !fs.existsSync(COMPROVANTES_DIR)) {
-  fs.mkdirSync(COMPROVANTES_DIR, { recursive: true });
-}
-
-function shouldUseSupabaseStorage() {
-  return isSupabaseConfigured() && process.env.STORAGE_PROVIDER === 'supabase';
-}
-
-function getGenericContentType(fileName: string) {
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  return 'application/octet-stream';
-}
-
-async function saveProofFile(pedidoId: string, fileName: string, bytes: Buffer) {
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storedFileName = `${Date.now()}_${safeName}`;
-
-  if (shouldUseSupabaseStorage()) {
-    const objectPath = `${pedidoId}/${storedFileName}`;
-    const { error } = await getSupabaseClient()
-      .storage
-      .from(PROOFS_BUCKET)
-      .upload(objectPath, bytes, {
-        upsert: true,
-        contentType: getGenericContentType(fileName),
-      });
-
-    if (error) {
-      throw new Error(`Erro ao salvar comprovante no Supabase Storage: ${error.message}`);
-    }
-
-    return {
-      fileName: storedFileName,
-      url: `/api/orders/${pedidoId}/proof/${storedFileName}`,
-      filePath: null as string | null,
-    };
-  }
-
-  const pedidoDir = path.join(COMPROVANTES_DIR, pedidoId);
-  if (!fs.existsSync(pedidoDir)) {
-    fs.mkdirSync(pedidoDir, { recursive: true });
-  }
-
-  const filePath = path.join(pedidoDir, storedFileName);
-  fs.writeFileSync(filePath, bytes);
-  return {
-    fileName: storedFileName,
-    url: `/api/orders/${pedidoId}/proof/${storedFileName}`,
-    filePath,
-  };
-}
-
-async function getProofFile(pedidoId: string, fileName: string) {
-  if (shouldUseSupabaseStorage()) {
-    const { data, error } = await getSupabaseClient()
-      .storage
-      .from(PROOFS_BUCKET)
-      .download(`${pedidoId}/${fileName}`);
-
-    if (error || !data) return null;
-
-    return {
-      bytes: Buffer.from(await data.arrayBuffer()),
-      contentType: getGenericContentType(fileName),
-      filePath: null as string | null,
-    };
-  }
-
-  const filePath = path.join(COMPROVANTES_DIR, pedidoId, fileName);
-  if (!fs.existsSync(filePath)) return null;
-
-  return {
-    bytes: null as Buffer | null,
-    contentType: getGenericContentType(fileName),
-    filePath,
-  };
-}
 
 function makePixCode(id: string) {
   const pixKey = 'e863ad88-7ae6-43a6-8778-a8505dcd80be';
@@ -145,10 +62,9 @@ const TOTAL_ORDER_AMOUNT_CENTS = 1999;
 type InfinitePayStage = 'preview' | 'final';
 
 type N8nEventName =
-  | 'lyrics_approved'
+  | 'lyrics_generated'
   | 'preview_payment_confirmed'
   | 'final_payment_confirmed'
-  | 'proof_uploaded'
   | 'audio_attached';
 
 function getBaseUrl(req: express.Request) {
@@ -201,13 +117,18 @@ async function sendN8nEvent(event: N8nEventName, pedido: PedidoMusica, extra: Re
         clienteWhatsapp: pedido.cliente_whatsapp,
         temaId: pedido.respostas.temaId,
         estiloMusical: pedido.respostas.estiloMusical,
+        descricaoMusical: pedido.respostas.descricaoMusical || pedido.respostas.respostas?._descricao_musical || '',
         provVoice: pedido.respostas.provVoice,
         statusPagamento: pedido.status_pagamento,
         statusProducao: pedido.status_producao,
-        letraAprovada: pedido.letra_aprovada,
         hasPreviewV1: Boolean(pedido.url_local_servidor),
         hasPreviewV2: Boolean(pedido.url_local_servidor_2),
-        comprovanteNomeArquivo: pedido.comprovante_nome_arquivo,
+        ...(event === 'preview_payment_confirmed' ? {
+          respostas: pedido.respostas.respostas,
+          letra: pedido.letra_aprovada || pedido.letra_gerada,
+          promptCriacao: [...(pedido.ai_interactions || [])].reverse().find((interaction) => interaction.kind === 'compose')?.prompt || '',
+          outputOriginalIa: [...(pedido.ai_interactions || [])].reverse().find((interaction) => interaction.kind === 'compose')?.output || '',
+        } : {}),
       },
       ...extra,
     }),
@@ -258,6 +179,21 @@ function parseInfinitePayOrderNsu(orderNsu: string | undefined) {
   };
 }
 
+function extractInfinitePayPaymentId(body: Record<string, unknown>) {
+  const candidates = [
+    body.transaction_id,
+    body.transactionId,
+    body.payment_id,
+    body.paymentId,
+    body.charge_id,
+    body.chargeId,
+    body.id,
+    body.nsu,
+    body.order_nsu,
+  ];
+  return candidates.find((value) => typeof value === 'string' && value.trim()) as string | undefined;
+}
+
 function refreshProductionStatusAfterAudioUpdate(pedido: PedidoMusica) {
   if (pedido.status_pagamento === 'PAGO') {
     pedido.status_producao = 'LIBERADO';
@@ -272,8 +208,14 @@ function refreshProductionStatusAfterAudioUpdate(pedido: PedidoMusica) {
   pedido.status_producao = hasAnyPreview(pedido) ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
 }
 
-async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica) {
+async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica, paymentId?: string) {
   if (pedido.status_pagamento === 'PAGO') return pedido;
+  if (paymentId) {
+    pedido.respostas.respostas = {
+      ...(pedido.respostas.respostas || {}),
+      _infinitepay_preview_payment_id: paymentId,
+    };
+  }
   pedido.status_producao = hasAnyPreview(pedido) ? 'PREVIAS_PRONTAS' : 'AGUARDANDO_FAIXAS';
   pedido.updatedAt = new Date().toISOString();
   await savePedido(pedido);
@@ -281,6 +223,7 @@ async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica) {
     await sendN8nEvent('preview_payment_confirmed', pedido, {
       paymentStage: 'preview',
       amountCents: PREVIEW_UNLOCK_AMOUNT_CENTS,
+      paymentId: paymentId || null,
     });
   } catch (error) {
     console.error('Falha ao notificar n8n sobre pagamento da previa:', error);
@@ -288,9 +231,15 @@ async function markPreviewPaymentAsConfirmed(pedido: PedidoMusica) {
   return pedido;
 }
 
-async function markFinalPaymentAsConfirmed(pedido: PedidoMusica) {
+async function markFinalPaymentAsConfirmed(pedido: PedidoMusica, paymentId?: string) {
   const expDate = new Date();
   expDate.setDate(expDate.getDate() + 10);
+  if (paymentId) {
+    pedido.respostas.respostas = {
+      ...(pedido.respostas.respostas || {}),
+      _infinitepay_final_payment_id: paymentId,
+    };
+  }
   pedido.status_pagamento = 'PAGO';
   pedido.status_producao = 'LIBERADO';
   pedido.data_expiracao_local = expDate.toISOString();
@@ -301,6 +250,7 @@ async function markFinalPaymentAsConfirmed(pedido: PedidoMusica) {
       paymentStage: 'final',
       amountCents: FINAL_PAYMENT_AMOUNT_CENTS,
       totalAmountCents: TOTAL_ORDER_AMOUNT_CENTS,
+      paymentId: paymentId || null,
     });
   } catch (error) {
     console.error('Falha ao notificar n8n sobre pagamento final:', error);
@@ -374,25 +324,6 @@ function getTelegramWebhookSecret() {
   return (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
 }
 
-function buildApprovalWhatsAppLink(pedido: PedidoMusica) {
-  const number = getWhatsAppNumber();
-  if (!number) return null;
-
-  const letra = pedido.letra_aprovada || pedido.letra_gerada;
-  const message = [
-    `Novo pedido aprovado: ${pedido.id}`,
-    `Cliente: ${pedido.cliente_email} | ${pedido.cliente_whatsapp}`,
-    `Tema: ${pedido.respostas.temaId}`,
-    `Estilo: ${pedido.respostas.estiloMusical}`,
-    `Voz: ${pedido.respostas.provVoice}`,
-    '',
-    'Letra aprovada:',
-    letra,
-  ].join('\n');
-
-  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
-}
-
 function buildClientSupportWhatsAppLink(pedido: PedidoMusica) {
   const number = getWhatsAppNumber();
   if (!number) return null;
@@ -402,35 +333,10 @@ function buildClientSupportWhatsAppLink(pedido: PedidoMusica) {
     `Cliente: ${pedido.cliente_email} | ${pedido.cliente_whatsapp}`,
     pedido.status_pagamento === 'PAGO'
       ? 'O pagamento ja foi realizado. Pode confirmar a liberacao das faixas completas?'
-      : 'Estou enviando o comprovante de pagamento para liberar as faixas completas.',
+      : 'Preciso de ajuda com o pagamento pela InfinitePay.',
   ].join('\n');
 
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
-}
-
-function buildTelegramApprovalMessage(pedido: PedidoMusica) {
-  const letra = pedido.letra_aprovada || pedido.letra_gerada;
-  return [
-    `Novo pedido aprovado: ${pedido.id}`,
-    `Cliente: ${pedido.cliente_email}`,
-    `WhatsApp: ${pedido.cliente_whatsapp}`,
-    `Tema: ${pedido.respostas.temaId}`,
-    `Estilo: ${pedido.respostas.estiloMusical}`,
-    `Voz: ${pedido.respostas.provVoice}`,
-    '',
-    'Letra aprovada:',
-    letra,
-  ].join('\n');
-}
-
-function buildTelegramProofMessage(pedido: PedidoMusica) {
-  return [
-    `Comprovante recebido: ${pedido.id}`,
-    `Cliente: ${pedido.cliente_email}`,
-    `WhatsApp: ${pedido.cliente_whatsapp}`,
-    `Tema: ${pedido.respostas.temaId}`,
-    `Estilo: ${pedido.respostas.estiloMusical}`,
-  ].join('\n');
 }
 
 async function sendTelegramMessage(text: string) {
@@ -455,60 +361,6 @@ async function sendTelegramMessage(text: string) {
   }
 
   return { sent: true };
-}
-
-async function sendTelegramDocument(filePath: string, caption: string) {
-  const botToken = getTelegramBotToken();
-  const chatId = getTelegramChatId();
-  if (!botToken || !chatId) {
-    return { sent: false, reason: 'Telegram nao configurado.' };
-  }
-
-  const formData = new FormData();
-  formData.append('chat_id', chatId);
-  formData.append('caption', caption);
-  formData.append('document', new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
-
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  const data = await response.json() as { ok?: boolean; description?: string };
-  if (!response.ok || !data.ok) {
-    throw new Error(data.description || 'Falha ao enviar documento para o Telegram.');
-  }
-
-  return { sent: true };
-}
-
-async function sendTelegramDocumentBytes(bytes: Buffer, fileName: string, caption: string) {
-  const botToken = getTelegramBotToken();
-  const chatId = getTelegramChatId();
-  if (!botToken || !chatId) {
-    return { sent: false, reason: 'Telegram nao configurado.' };
-  }
-
-  const formData = new FormData();
-  formData.append('chat_id', chatId);
-  formData.append('caption', caption);
-  formData.append('document', new Blob([bytes]), fileName);
-
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
-    method: 'POST',
-    body: formData,
-  });
-
-  const data = await response.json() as { ok?: boolean; description?: string };
-  if (!response.ok || !data.ok) {
-    throw new Error(data.description || 'Falha ao enviar documento para o Telegram.');
-  }
-
-  return { sent: true };
-}
-
-async function sendTelegramApprovalNotification(pedido: PedidoMusica) {
-  return sendTelegramMessage(buildTelegramApprovalMessage(pedido));
 }
 
 async function notifyTelegramError(title: string, details: string) {
@@ -575,12 +427,7 @@ function isTelegramHelpCommand(text: string | undefined) {
 }
 
 function parseTelegramMarkPaidCommand(text: string | undefined) {
-  if (!text) return null;
-  const match = /^\/(pago|aprovar_pagamento)\s+(MEL-[A-Z0-9]+)$/i.exec(text.trim());
-  if (!match) return null;
-  return {
-    pedidoId: match[2].toUpperCase(),
-  };
+  return null;
 }
 
 function formatRanking(items: Record<string, number>, emptyLabel: string) {
@@ -663,8 +510,6 @@ function buildTelegramHelpMessage() {
     '',
     '/resumo - resumo do sistema',
     '/help - mostra esta ajuda',
-    '/pago - lista os comprovantes recentes e pede o ID para aprovar',
-    '/pago MEL-XXXX - aprova o pagamento do pedido diretamente',
     '/musica - adiciona musicas (V1 e V2) a um pedido',
     '/cancelar - cancela a operacao em andamento',
   ].join('\n');
@@ -720,7 +565,7 @@ async function downloadTelegramFile(fileId: string, fileName?: string) {
 }
 
 interface TelegramSession {
-  step: 'awaiting_pedido_id' | 'awaiting_paid_order_id' | 'awaiting_v1_audio' | 'awaiting_v1_url' | 'awaiting_v2_audio' | 'awaiting_v2_url';
+  step: 'awaiting_pedido_id' | 'awaiting_v1_audio' | 'awaiting_v1_url' | 'awaiting_v2_audio' | 'awaiting_v2_url';
   pedidoId?: string;
   tempPathV1?: string;
   fileNameV1?: string;
@@ -791,40 +636,6 @@ async function handleTelegramSession(
 ) {
   try {
     const text = message.text?.trim();
-
-    if (session.step === 'awaiting_paid_order_id') {
-      if (!text) {
-        await sendTelegramReply(chatId, 'Por favor, digite o ID do pedido (ex: MEL-XXXXX) ou envie /cancelar:');
-        return;
-      }
-
-      const pedidoId = text.toUpperCase();
-      if (!isPedidoId(pedidoId)) {
-        await sendTelegramReply(chatId, 'ID do pedido invalido. Por favor, envie no formato MEL-XXXXX ou envie /cancelar:');
-        return;
-      }
-
-      const pedido = await getPedido(pedidoId);
-      if (!pedido) {
-        await sendTelegramReply(chatId, `Pedido ${pedidoId} nao encontrado no sistema. Por favor, digite um ID valido ou envie /cancelar:`);
-        return;
-      }
-
-      const expDate = new Date();
-      expDate.setDate(expDate.getDate() + 10);
-      pedido.status_pagamento = 'PAGO';
-      refreshProductionStatusAfterAudioUpdate(pedido);
-      pedido.data_expiracao_local = expDate.toISOString();
-      pedido.updatedAt = new Date().toISOString();
-      await savePedido(pedido);
-
-      telegramSessions.delete(chatId);
-      await sendTelegramReply(
-        chatId,
-        `Pagamento aprovado no pedido ${pedido.id}. O cliente ja pode acessar a liberacao conforme o status do pedido.`
-      );
-      return;
-    }
 
     if (session.step === 'awaiting_pedido_id') {
       if (!text) {
@@ -1088,39 +899,8 @@ async function processTelegramMusicUpdate(update: TelegramUpdate) {
     return;
   }
 
-  if (markPaid) {
-    const pedido = await getPedido(markPaid.pedidoId);
-    if (!pedido) {
-      await sendTelegramReply(chatId, `Pedido ${markPaid.pedidoId} nao encontrado.`);
-      return;
-    }
-
-    const expDate = new Date();
-    expDate.setDate(expDate.getDate() + 10);
-    pedido.status_pagamento = 'PAGO';
-    pedido.data_expiracao_local = expDate.toISOString();
-    refreshProductionStatusAfterAudioUpdate(pedido);
-    pedido.updatedAt = new Date().toISOString();
-    await savePedido(pedido);
-
-    await sendTelegramReply(
-      chatId,
-      `Pagamento aprovado no pedido ${pedido.id}. O cliente ja pode acessar a liberacao conforme o status do pedido.`
-    );
-    return;
-  }
-
-  if (text === '/pago' || text === '/aprovar_pagamento') {
-    telegramSessions.set(chatId, { step: 'awaiting_paid_order_id' });
-
-    let recentProofsList = '';
-    try {
-      recentProofsList = await buildTelegramRecentProofsMessage();
-    } catch (error) {
-      console.error('Erro ao listar pedidos com comprovante para /pago:', error);
-      recentProofsList = '<i>Nao foi possivel carregar a lista de comprovantes recentes.</i>';
-    }
-
+  if (false && (text === '/pago' || text === '/aprovar_pagamento')) {
+    const recentProofsList = 'A aprovacao manual de pagamento foi desativada.';
     await sendTelegramReply(
       chatId,
       `💸 <b>Aprovar Pagamento</b>\n\n${recentProofsList}\n\nDigite o ID do pedido para aprovar o pagamento (ex: <code>MEL-LJSGQ0DTN</code>):\n\n💡 <i>Voce pode enviar /cancelar a qualquer momento para sair.</i>`,
@@ -1491,6 +1271,14 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       };
 
       await savePedido(novoPedido);
+      try {
+        await sendN8nEvent('lyrics_generated', novoPedido, {
+          notificationLevel: 'summary',
+          message: 'Novo cliente, letra gerada',
+        });
+      } catch (n8nError) {
+        console.error('Falha ao notificar n8n sobre letra gerada:', n8nError);
+      }
       res.json(novoPedido);
     } catch (error: any) {
       console.error('Erro ao compor letra:', error);
@@ -1568,34 +1356,11 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       pedido.updatedAt = new Date().toISOString();
 
       await savePedido(pedido);
-      let telegramSent = false;
-      let telegramError: string | null = null;
-
-      try {
-        await sendN8nEvent('lyrics_approved', pedido, {
-          trigger: 'customer_approval',
-        });
-      } catch (n8nError) {
-        console.error('Falha ao notificar n8n sobre letra aprovada:', n8nError);
-      }
-
-      try {
-        const telegramResult = await sendTelegramApprovalNotification(pedido);
-        telegramSent = telegramResult.sent;
-      } catch (telegramErr: any) {
-        telegramError = telegramErr.message || 'Falha ao enviar para o Telegram.';
-        console.error('Erro ao enviar notificacao para o Telegram:', telegramErr);
-        await notifyTelegramError(
-          'Falha ao enviar letra aprovada',
-          `Pedido: ${pedido.id}\n${telegramError}`,
-        );
-      }
 
       res.json({
         pedido,
-        whatsappLink: buildApprovalWhatsAppLink(pedido),
-        telegramSent,
-        telegramError,
+        telegramSent: false,
+        telegramError: null,
       });
     } catch (error: any) {
       console.error('Erro ao aprovar letra:', error);
@@ -1654,10 +1419,11 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
         return;
       }
 
+      const paymentId = extractInfinitePayPaymentId(req.body || {});
       if (parsed.stage === 'preview') {
-        await markPreviewPaymentAsConfirmed(pedido);
+        await markPreviewPaymentAsConfirmed(pedido, paymentId);
       } else {
-        await markFinalPaymentAsConfirmed(pedido);
+        await markFinalPaymentAsConfirmed(pedido, paymentId);
       }
 
       res.json({ success: true, message: null });
@@ -1675,7 +1441,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       return;
     }
 
-    await markFinalPaymentAsConfirmed(pedido);
+    await markFinalPaymentAsConfirmed(pedido, 'manual-simulation');
     res.json(pedido);
   });
 
@@ -1695,10 +1461,7 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       return;
     }
 
-    const kind = req.query.kind === 'lyrics' ? 'lyrics' : 'payment';
-    const whatsappLink = kind === 'lyrics'
-      ? buildApprovalWhatsAppLink(pedido)
-      : buildClientSupportWhatsAppLink(pedido);
+    const whatsappLink = buildClientSupportWhatsAppLink(pedido);
     if (!whatsappLink) {
       res.status(503).json({ error: 'WhatsApp do estudio nao configurado no servidor.' });
       return;
@@ -1722,80 +1485,6 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       console.error('Erro ao buscar pedidos por contato:', error);
       res.status(500).json({ error: error?.message || 'Falha ao buscar pedidos.' });
     }
-  });
-
-  app.post('/api/orders/:id/upload-proof', express.raw({ type: 'application/octet-stream', limit: '50mb' }), async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido nao encontrado.' });
-      return;
-    }
-
-    const fileName = decodeURIComponent(req.header('x-file-name') || 'comprovante');
-    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
-    if (!bytes.length) {
-      res.status(400).json({ error: 'Arquivo de comprovante vazio.' });
-      return;
-    }
-
-    const savedProof = await saveProofFile(pedido.id, fileName, bytes);
-
-    pedido.comprovante_url_local = savedProof.url;
-    pedido.comprovante_nome_arquivo = fileName;
-    pedido.updatedAt = new Date().toISOString();
-    await savePedido(pedido);
-
-    try {
-      await sendN8nEvent('proof_uploaded', pedido, {
-        fileName,
-        proofUrl: savedProof.url,
-      });
-    } catch (n8nError) {
-      console.error('Falha ao notificar n8n sobre comprovante:', n8nError);
-    }
-
-    let telegramSent = false;
-    let telegramError: string | null = null;
-    try {
-      const result = savedProof.filePath
-        ? await sendTelegramDocument(savedProof.filePath, buildTelegramProofMessage(pedido))
-        : await sendTelegramDocumentBytes(bytes, fileName, buildTelegramProofMessage(pedido));
-      telegramSent = result.sent;
-    } catch (error: any) {
-      telegramError = error?.message || 'Falha ao enviar comprovante para o Telegram.';
-      console.error('Erro ao enviar comprovante para o Telegram:', error);
-      await notifyTelegramError(
-        'Falha ao enviar comprovante',
-        `Pedido: ${pedido.id}\n${telegramError}`,
-      );
-    }
-
-    res.json({
-      pedido,
-      telegramSent,
-      telegramError,
-    });
-  });
-
-  app.get('/api/orders/:id/proof/:file', async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido || !pedido.comprovante_url_local) {
-      res.status(404).send('Comprovante nao encontrado.');
-      return;
-    }
-
-    const proof = await getProofFile(pedido.id, req.params.file);
-    if (!proof) {
-      res.status(404).send('Comprovante nao encontrado.');
-      return;
-    }
-
-    res.setHeader('Content-Type', proof.contentType);
-    if (proof.filePath) {
-      res.sendFile(proof.filePath);
-      return;
-    }
-    res.send(proof.bytes);
   });
 
   app.get('/api/admin/orders', requireAdmin, async (_req, res) => {
@@ -1900,50 +1589,6 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
     }
   });
 
-  app.get('/api/admin/orders/:id/whatsapp-link', requireAdmin, async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido nao encontrado.' });
-      return;
-    }
-
-    const whatsappLink = buildApprovalWhatsAppLink(pedido);
-    if (!whatsappLink) {
-      res.status(503).json({ error: 'WhatsApp do estudio nao configurado no servidor.' });
-      return;
-    }
-
-    res.json({
-      whatsappLink,
-      whatsappNumber: getWhatsAppNumber(),
-    });
-  });
-
-  app.post('/api/admin/orders/:id/resend-telegram', requireAdmin, async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido nao encontrado.' });
-      return;
-    }
-
-    if (!pedido.letra_aprovada) {
-      res.status(400).json({ error: 'Esse pedido ainda nao tem letra aprovada para reenviar.' });
-      return;
-    }
-
-    try {
-      const result = await sendTelegramApprovalNotification(pedido);
-      res.json(result);
-    } catch (error: any) {
-      console.error('Erro ao reenviar letra para o Telegram:', error);
-      await notifyTelegramError(
-        'Falha ao reenviar letra aprovada',
-        `Pedido: ${pedido.id}\n${error?.message || 'Erro desconhecido.'}`,
-      );
-      res.status(500).json({ error: error?.message || 'Falha ao reenviar letra para o Telegram.' });
-    }
-  });
-
   app.post('/api/admin/orders/:id/upload/:slot', requireAdmin, express.raw({ type: 'application/octet-stream', limit: '300mb' }), (req, res) => {
     const slot = req.params.slot;
     if (slot !== 'v1' && slot !== 'v2') {
@@ -2007,38 +1652,6 @@ export async function createApp(options: { serveFrontend?: boolean } = {}) {
       console.error('Erro ao anexar audio manual:', error);
       res.status(500).json({ error: error?.message || 'Erro ao anexar as faixas.' });
     }
-  });
-
-  app.post('/api/admin/orders/:id/mark-paid', requireAdmin, async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido nao encontrado.' });
-      return;
-    }
-
-    const expDate = new Date();
-    expDate.setDate(expDate.getDate() + 10);
-    pedido.status_pagamento = 'PAGO';
-    pedido.data_expiracao_local = expDate.toISOString();
-    refreshProductionStatusAfterAudioUpdate(pedido);
-    pedido.updatedAt = new Date().toISOString();
-    await savePedido(pedido);
-    res.json(pedido);
-  });
-
-  app.post('/api/admin/orders/:id/mark-unpaid', requireAdmin, async (req, res) => {
-    const pedido = await getPedido(req.params.id);
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido nao encontrado.' });
-      return;
-    }
-
-    pedido.status_pagamento = 'PENDENTE';
-    pedido.data_expiracao_local = null;
-    refreshProductionStatusAfterAudioUpdate(pedido);
-    pedido.updatedAt = new Date().toISOString();
-    await savePedido(pedido);
-    res.json(pedido);
   });
 
   app.post('/api/admin/orders/:id/reset-audio', requireAdmin, async (req, res) => {
